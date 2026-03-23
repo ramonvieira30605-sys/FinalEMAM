@@ -173,20 +173,34 @@ export default function App() {
               .eq('user_id', currentUser.id);
             
             if (cloudChecklists && !checklistsError && cloudChecklists.length > 0) {
-              const mappedChecklists: Checklist[] = cloudChecklists.map(c => ({
-                id: c.id,
-                assetId: c.asset_id,
-                date: c.date,
-                technician: c.technician,
-                items: {
-                  vibration: c.vibration as 'Normal' | 'Anormal',
-                  temperature: c.temperature as 'Normal' | 'Alta',
-                  noise: c.noise as 'Normal' | 'Anormal',
-                  currentCheck: c.current_check as 'OK' | 'Desequilibrada',
-                  errorCodes: c.error_codes || '',
-                  observations: c.observations || ''
+              const mappedChecklists: Checklist[] = cloudChecklists.map(c => {
+                let items = { observations: c.observations || '' };
+                try {
+                  // Try to parse JSON from observations if it starts with {
+                  if (c.observations && c.observations.startsWith('{')) {
+                    items = JSON.parse(c.observations);
+                  } else {
+                    // Fallback for old data
+                    items = {
+                      ...items,
+                      vibration: c.vibration,
+                      temperature: c.temperature,
+                      noise: c.noise,
+                      currentCheck: c.current_check,
+                      errorCodes: c.error_codes,
+                    } as any;
+                  }
+                } catch (e) {
+                  console.warn('Failed to parse checklist items', e);
                 }
-              }));
+                return {
+                  id: c.id,
+                  assetId: c.asset_id,
+                  date: c.date,
+                  technician: c.technician,
+                  items
+                };
+              });
               setChecklists(mappedChecklists);
             }
 
@@ -286,12 +300,8 @@ export default function App() {
           asset_id: c.assetId,
           date: c.date,
           technician: c.technician,
-          vibration: c.items.vibration,
-          temperature: c.items.temperature,
-          noise: c.items.noise,
-          current_check: c.items.currentCheck,
-          error_codes: c.items.errorCodes,
-          observations: c.items.observations,
+          // Store all items as JSON in observations to preserve new technical fields
+          observations: JSON.stringify(c.items),
           user_id: userId
         })));
       }
@@ -328,11 +338,29 @@ export default function App() {
       date: new Date().toISOString(),
       technician: formData.get('technician') as string,
       items: {
-        vibration: formData.get('vibration') as 'Normal' | 'Anormal',
-        temperature: formData.get('temperature') as 'Normal' | 'Alta',
-        noise: formData.get('noise') as 'Normal' | 'Anormal',
-        currentCheck: formData.get('currentCheck') as 'OK' | 'Desequilibrada',
-        errorCodes: formData.get('errorCodes') as string,
+        // Acionamentos
+        p0003_current: formData.get('p0003_current') as string,
+        p0004_link_dc: formData.get('p0004_link_dc') as string,
+        p006_status: formData.get('p006_status') as string,
+        starting_current_peak: formData.get('starting_current_peak') as string,
+        
+        // Motobomba
+        discharge_pressure: formData.get('discharge_pressure') as string,
+        casing_temperature: formData.get('casing_temperature') as string,
+        gland_drip: formData.get('gland_drip') as string,
+        mechanical_seal_leak: formData.get('mechanical_seal_leak') as string,
+        
+        // Compressores
+        load_pressure: formData.get('load_pressure') as string,
+        unload_pressure: formData.get('unload_pressure') as string,
+        unit_temperature: formData.get('unit_temperature') as string,
+        condensate_drain_oil: formData.get('condensate_drain_oil') as string,
+        
+        // Quadros
+        phase_unbalance: formData.get('phase_unbalance') as string,
+        terminal_temperature: formData.get('terminal_temperature') as string,
+        dps_status: formData.get('dps_status') as string,
+        
         observations: formData.get('observations') as string,
       }
     };
@@ -382,13 +410,32 @@ export default function App() {
     const checklistData = [
       ['Data/Hora:', new Date(checklist.date).toLocaleString('pt-BR')],
       ['Técnico Responsável:', checklist.technician],
-      ['Vibração:', checklist.items.vibration],
-      ['Temperatura:', checklist.items.temperature],
-      ['Ruído:', checklist.items.noise],
-      ['Equilíbrio de Corrente:', checklist.items.currentCheck],
-      ['Códigos de Erro (IHM):', checklist.items.errorCodes || 'Nenhum'],
-      ['Observações:', checklist.items.observations || 'Nenhuma']
     ];
+
+    // Add specific parameters based on asset type
+    if (asset.type === 'Inversor') {
+      checklistData.push(['Corrente Saída (P0003):', checklist.items.p0003_current || '-']);
+      checklistData.push(['Tensão Link DC (P0004):', checklist.items.p0004_link_dc || '-']);
+    } else if (asset.type === 'Soft-Starter') {
+      checklistData.push(['Status (P006):', checklist.items.p006_status || '-']);
+      checklistData.push(['Corrente Partida:', checklist.items.starting_current_peak || '-']);
+    } else if (asset.type === 'Motor') {
+      checklistData.push(['Pressão Descarga:', checklist.items.discharge_pressure || '-']);
+      checklistData.push(['Temp. Carcaça:', checklist.items.casing_temperature || '-']);
+      checklistData.push(['Gotejamento Gaxeta:', checklist.items.gland_drip || '-']);
+      checklistData.push(['Vazamento Selo:', checklist.items.mechanical_seal_leak || '-']);
+    } else if (asset.type === 'Compressor') {
+      checklistData.push(['Pressão Carga:', checklist.items.load_pressure || '-']);
+      checklistData.push(['Pressão Alívio:', checklist.items.unload_pressure || '-']);
+      checklistData.push(['Temp. Unidade:', checklist.items.unit_temperature || '-']);
+      checklistData.push(['Dreno Condensado:', checklist.items.condensate_drain_oil || '-']);
+    } else if (asset.type === 'Quadro') {
+      checklistData.push(['Equilíbrio Fases:', checklist.items.phase_unbalance || '-']);
+      checklistData.push(['Temp. Bornes:', checklist.items.terminal_temperature || '-']);
+      checklistData.push(['Status DPS:', checklist.items.dps_status || '-']);
+    }
+
+    checklistData.push(['Observações:', checklist.items.observations || 'Nenhuma']);
 
     (doc as any).autoTable({
       startY: startYChecklist + 5,
@@ -495,7 +542,7 @@ export default function App() {
       name: formData.get('name') as string,
       type: formData.get('type') as AssetType,
       model: formData.get('model') as string,
-      serialNumber: formData.get('serialNumber') as string,
+      serialNumber: (formData.get('serialNumber') as string) || 'N/A',
       location: formData.get('location') as string,
       status: formData.get('status') as AssetStatus,
       createdAt: new Date().toISOString(),
@@ -581,12 +628,8 @@ export default function App() {
             asset_id: c.assetId,
             date: c.date,
             technician: c.technician,
-            vibration: c.items.vibration,
-            temperature: c.items.temperature,
-            noise: c.items.noise,
-            current_check: c.items.currentCheck,
-            error_codes: c.items.errorCodes,
-            observations: c.items.observations,
+            // Store all items as JSON in observations to preserve new technical fields
+            observations: JSON.stringify(c.items),
             user_id: userId
           })));
         if (checklistsError) throw checklistsError;
@@ -657,7 +700,7 @@ export default function App() {
     doc.rect(0, 0, 210, 40, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(24);
-    doc.text('EMAM V4 - GESTÃO WEG', 14, 25);
+    doc.text('EMAM/ELT - GESTÃO WEG', 14, 25);
     doc.setFontSize(10);
     doc.text(`RELATÓRIO: ${reportType.toUpperCase()}`, 14, 35);
     
@@ -677,17 +720,19 @@ export default function App() {
     } else if (reportType === 'checklist_geral') {
       autoTable(doc, {
         startY: 65,
-        head: [['Data', 'Ativo', 'Técnico', 'Vibração', 'Temp.', 'Ruído', 'Corrente']],
+        head: [['Data', 'Ativo', 'Técnico', 'Observações / Medições']],
         body: checklists.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(c => {
           const asset = assets.find(a => a.id === c.assetId);
+          // Create a summary of measurements
+          let summary = c.items.observations || '';
+          if (asset?.type === 'Inversor') summary = `Corrente: ${c.items.p0003_current}A | Link DC: ${c.items.p0004_link_dc}V. ${summary}`;
+          if (asset?.type === 'Soft-Starter') summary = `Status: ${c.items.p006_status} | Partida: ${c.items.starting_current_peak}. ${summary}`;
+          
           return [
             new Date(c.date).toLocaleDateString('pt-BR'),
             asset?.name || 'N/A',
             c.technician,
-            c.items.vibration,
-            c.items.temperature,
-            c.items.noise,
-            c.items.currentCheck
+            summary
           ];
         }),
         theme: 'grid',
@@ -710,19 +755,21 @@ export default function App() {
         const recent = recentChecklists.filter(c => c.assetId === asset.id);
         const old = oldChecklists.filter(c => c.assetId === asset.id);
         
-        const recentAlerts = recent.filter(c => 
-          c.items.vibration === 'Anormal' || 
-          c.items.temperature === 'Alta' || 
-          c.items.noise === 'Anormal' || 
-          c.items.currentCheck === 'Desequilibrada'
-        ).length;
+        const recentAlerts = recent.filter(c => {
+          const asset = assets.find(a => a.id === c.assetId);
+          if (asset?.type === 'Motor') return c.items.mechanical_seal_leak === 'Com Vazamento' || c.items.gland_drip === 'Excessivo';
+          if (asset?.type === 'Quadro') return c.items.dps_status === 'Vermelho (Substituir)';
+          if (asset?.type === 'Compressor') return c.items.condensate_drain_oil === 'Presença de Óleo (Alerta)';
+          return false;
+        }).length;
 
-        const oldAlerts = old.filter(c => 
-          c.items.vibration === 'Anormal' || 
-          c.items.temperature === 'Alta' || 
-          c.items.noise === 'Anormal' || 
-          c.items.currentCheck === 'Desequilibrada'
-        ).length;
+        const oldAlerts = old.filter(c => {
+          const asset = assets.find(a => a.id === c.assetId);
+          if (asset?.type === 'Motor') return c.items.mechanical_seal_leak === 'Com Vazamento' || c.items.gland_drip === 'Excessivo';
+          if (asset?.type === 'Quadro') return c.items.dps_status === 'Vermelho (Substituir)';
+          if (asset?.type === 'Compressor') return c.items.condensate_drain_oil === 'Presença de Óleo (Alerta)';
+          return false;
+        }).length;
 
         let trend = 'Estável';
         if (recentAlerts > oldAlerts) trend = 'Piora';
@@ -829,8 +876,8 @@ export default function App() {
       {/* Header */}
       <header className="p-6 flex justify-between items-center border-b border-zinc-900">
         <div>
-          <h1 className="text-2xl font-bold tracking-tighter text-white">EMAM <span className="text-emerald-500">V4</span></h1>
-          <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold">Manutenção Elétrica WEG</p>
+          <h1 className="text-2xl font-bold tracking-tighter text-white">EMAM<span className="text-emerald-500">/ELT</span></h1>
+          <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold">Manutenção Elétrica</p>
         </div>
         <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
           <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -1372,10 +1419,11 @@ export default function App() {
                       onChange={(e) => setSelectedType(e.target.value as AssetType)}
                       className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50"
                     >
-                      <option value="Motor">Motor</option>
-                      <option value="Inversor">Inversor</option>
-                      <option value="Soft-Starter">Soft-Starter</option>
-                      <option value="Quadro">Quadro</option>
+                      <option value="Motor">Motor / Bomba</option>
+                      <option value="Inversor">Inversor (CFW500)</option>
+                      <option value="Soft-Starter">Soft-Starter (SSW07)</option>
+                      <option value="Compressor">Compressor Parafuso</option>
+                      <option value="Quadro">Quadro Elétrico</option>
                       <option value="Outro">Outro</option>
                     </select>
                   </div>
@@ -1390,14 +1438,10 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4">
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-zinc-500 uppercase">Modelo</label>
                     <input name="model" placeholder="Ex: CFW500 / SSW07" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Nº de Série</label>
-                    <input name="serialNumber" placeholder="Ex: 100023456" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
                   </div>
                 </div>
 
@@ -1485,6 +1529,155 @@ export default function App() {
                   <input name="location" placeholder="Ex: Setor de Britagem" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
                 </div>
                 <button type="submit" className="w-full py-4 bg-emerald-500 text-black font-bold rounded-2xl active:scale-95 transition-all">SALVAR ATIVO</button>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Checklist Modal */}
+      <AnimatePresence>
+        {isChecklistModalOpen && selectedAsset && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-zinc-900 border border-zinc-800 w-full rounded-3xl p-6 space-y-4 max-h-[90vh] overflow-y-auto custom-scrollbar"
+            >
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="text-xl font-bold">Checklist Técnico</h3>
+                  <p className="text-xs text-emerald-500 font-bold uppercase">{selectedAsset.name}</p>
+                </div>
+                <button onClick={() => setIsChecklistModalOpen(false)} className="text-zinc-500 hover:text-white"><X size={24} /></button>
+              </div>
+
+              <form onSubmit={handleAddChecklist} className="space-y-6">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Técnico Responsável</label>
+                  <input name="technician" required placeholder="Nome do técnico" className="w-full bg-black border border-zinc-800 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
+                </div>
+
+                {/* Dynamic Fields based on Type */}
+                <div className="space-y-4 pt-4 border-t border-zinc-800/50">
+                  <h4 className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Medições Físicas / Parâmetros</h4>
+                  
+                  {selectedAsset.type === 'Inversor' && (
+                    <div className="grid grid-cols-1 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Corrente de Saída (P0003) - Ampères</label>
+                        <input name="p0003_current" required placeholder="Ex: 12.5" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
+                        <p className="text-[9px] text-zinc-600 italic">Variação &gt;10% indica problema mecânico.</p>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Tensão Link DC (P0004) - Volts</label>
+                        <input name="p0004_link_dc" required placeholder="Padrão: 530V - 550V" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedAsset.type === 'Soft-Starter' && (
+                    <div className="grid grid-cols-1 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Status (P006)</label>
+                        <input name="p006_status" required placeholder="Ex: rdY, PASS ou Exx" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Corrente de Partida (Pico)</label>
+                        <input name="starting_current_peak" required placeholder="Observar pico na partida" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedAsset.type === 'Motor' && (
+                    <div className="grid grid-cols-1 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Pressão de Descarga (bar/psi)</label>
+                        <input name="discharge_pressure" required placeholder="Ex: 6.5 bar" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Temperatura de Carcaça (°C)</label>
+                        <input name="casing_temperature" required placeholder="Ex: 45°C" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Gotejamento Gaxeta</label>
+                          <select name="gland_drip" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50">
+                            <option>Normal (Gotas/min)</option>
+                            <option>Excessivo</option>
+                            <option>Seco (Risco)</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Selo Mecânico</label>
+                          <select name="mechanical_seal_leak" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50">
+                            <option>Zero Vazamento</option>
+                            <option>Com Vazamento</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedAsset.type === 'Compressor' && (
+                    <div className="grid grid-cols-1 gap-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Pressão Carga</label>
+                          <input name="load_pressure" required placeholder="Ex: 7.0 bar" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Pressão Alívio</label>
+                          <input name="unload_pressure" required placeholder="Ex: 8.5 bar" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Temperatura Unidade (°C)</label>
+                        <input name="unit_temperature" required placeholder="Normal: 75°C - 95°C" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Dreno Condensado</label>
+                        <select name="condensate_drain_oil" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50">
+                          <option>Apenas Água (OK)</option>
+                          <option>Presença de Óleo (Alerta)</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedAsset.type === 'Quadro' && (
+                    <div className="grid grid-cols-1 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Equilíbrio de Fases (V)</label>
+                        <input name="phase_unbalance" required placeholder="Ex: 382V / 380V / 381V" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Temperatura Bornes (°C)</label>
+                        <input name="terminal_temperature" required placeholder="Termografia ou toque seguro" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Status dos DPS</label>
+                        <select name="dps_status" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50">
+                          <option>Verde (OK)</option>
+                          <option>Vermelho (Substituir)</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Observações Adicionais</label>
+                  <textarea name="observations" rows={3} placeholder="Alguma anomalia ou ruído estranho?" className="w-full bg-black border border-zinc-800 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-emerald-500/50 resize-none" />
+                </div>
+
+                <button type="submit" className="w-full py-4 bg-emerald-500 text-black font-bold rounded-2xl active:scale-95 transition-all">FINALIZAR CHECKLIST</button>
               </form>
             </motion.div>
           </motion.div>

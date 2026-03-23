@@ -5,7 +5,7 @@
 CREATE TABLE IF NOT EXISTS public.assets (
     id UUID PRIMARY KEY,
     name TEXT NOT NULL,
-    type TEXT NOT NULL CHECK (type IN ('Motor', 'Inversor', 'Soft-Starter', 'Quadro', 'Outro')),
+    type TEXT NOT NULL CHECK (type IN ('Motor', 'Inversor', 'Soft-Starter', 'Quadro', 'Compressor', 'Outro')),
     model TEXT,
     serial_number TEXT,
     location TEXT,
@@ -50,12 +50,13 @@ CREATE TABLE IF NOT EXISTS public.checklists (
     asset_id UUID REFERENCES public.assets(id) ON DELETE CASCADE,
     date TIMESTAMPTZ DEFAULT NOW(),
     technician TEXT NOT NULL,
-    vibration TEXT NOT NULL CHECK (vibration IN ('Normal', 'Anormal')),
-    temperature TEXT NOT NULL CHECK (temperature IN ('Normal', 'Alta')),
-    noise TEXT NOT NULL CHECK (noise IN ('Normal', 'Anormal')),
-    current_check TEXT NOT NULL CHECK (current_check IN ('OK', 'Desequilibrada')),
+    -- Campos abaixo tornados opcionais para suportar o novo formato JSON em 'observations'
+    vibration TEXT,
+    temperature TEXT,
+    noise TEXT,
+    current_check TEXT,
     error_codes TEXT,
-    observations TEXT,
+    observations TEXT, -- Agora armazena o objeto 'items' completo como JSON string
     user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
