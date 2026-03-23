@@ -243,7 +243,8 @@ export default function App() {
         ['Fator Serviço (P0406):', asset.technicalParams.serviceFactor || '-'],
         ['Tensão Inicial (P0101):', asset.technicalParams.p0101 || '-'],
         ['Tempo Acel (P0102):', asset.technicalParams.p0102 || '-'],
-        ['Classe Térmica (P0640):', asset.technicalParams.p0640 || '-']
+        ['Seleção L/R (P0220):', asset.technicalParams.p0220 || '-'],
+        ['Corrente Sobrecarga (P0156):', asset.technicalParams.p0156 || '-']
       ];
 
       (doc as any).autoTable({
@@ -405,8 +406,8 @@ export default function App() {
         p0102: formData.get('p0102') as string,
         p0104: formData.get('p0104') as string,
         p0202: formData.get('p0202') as string,
-        p0219: formData.get('p0219') as string,
-        p0640: formData.get('p0640') as string,
+        p0220: formData.get('p0220') as string,
+        p0156: formData.get('p0156') as string,
         p0110: formData.get('p0110') as string,
       }
     };
@@ -874,7 +875,7 @@ export default function App() {
                           <li><span className="font-mono text-white">P0102:</span> Tempo Aceleração (Ex: 15s)</li>
                           <li><span className="font-mono text-white">P0104:</span> Tempo Desaceleração (0=Livre)</li>
                           <li><span className="font-mono text-white">P0202:</span> Tipo (0=Rampa, 1=Limite)</li>
-                          <li><span className="font-mono text-white">P0219:</span> Controle IHM (Ajustar para 1)</li>
+                          <li><span className="font-mono text-white">P0220:</span> Seleção L/R (0=Local, 1=Remoto)</li>
                         </ul>
                       </div>
                       <div className="bg-black/40 rounded-xl p-4 border border-zinc-800/50">
@@ -883,7 +884,7 @@ export default function App() {
                           <li><span className="font-mono text-white">P0400:</span> Tensão Nominal (220/380/440V)</li>
                           <li><span className="font-mono text-white">P0401:</span> Corrente Nominal (Amperes)</li>
                           <li><span className="font-mono text-white">P0406:</span> Fator de Serviço (Placa)</li>
-                          <li><span className="font-mono text-white">P0640:</span> Classe Térmica (Proteção)</li>
+                          <li><span className="font-mono text-white">P0156:</span> Corrente Sobrecarga (Proteção)</li>
                         </ul>
                       </div>
                     </div>
@@ -1347,12 +1348,12 @@ export default function App() {
                           <input name="p0202" placeholder="0=Rampa, 1=Limite" className="w-full bg-black border border-zinc-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-emerald-500/50" />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Controle IHM (P0219)</label>
-                          <input name="p0219" placeholder="Ajustar para 1" className="w-full bg-black border border-zinc-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-emerald-500/50" />
+                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Seleção L/R (P0220)</label>
+                          <input name="p0220" placeholder="0=Local, 1=Remoto" className="w-full bg-black border border-zinc-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-emerald-500/50" />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Classe Térmica (P0640)</label>
-                          <input name="p0640" placeholder="Ex: 10" className="w-full bg-black border border-zinc-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-emerald-500/50" />
+                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Corrente Sobrecarga (P0156)</label>
+                          <input name="p0156" placeholder="Ex: 1.1 * In" className="w-full bg-black border border-zinc-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-emerald-500/50" />
                         </div>
                         <div className="space-y-1 col-span-2">
                           <label className="text-[10px] font-bold text-zinc-500 uppercase">Limite de Corrente (P0110)</label>
@@ -1672,8 +1673,8 @@ export default function App() {
                       { label: 'Tempo Acel.', key: 'p0102', param: 'P0102' },
                       { label: 'Tempo Desacel.', key: 'p0104', param: 'P0104' },
                       { label: 'Tipo Partida', key: 'p0202', param: 'P0202' },
-                      { label: 'Controle IHM', key: 'p0219', param: 'P0219' },
-                      { label: 'Classe Térmica', key: 'p0640', param: 'P0640' },
+                      { label: 'Seleção L/R', key: 'p0220', param: 'P0220' },
+                      { label: 'Corrente Sobrecarga', key: 'p0156', param: 'P0156' },
                       { label: 'Limite Corrente', key: 'p0110', param: 'P0110' },
                     ].map((item) => {
                       const value = (selectedAsset.technicalParams as any)[item.key];

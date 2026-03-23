@@ -23,8 +23,8 @@ export interface Asset {
     p0102?: string;
     p0104?: string;
     p0202?: string;
-    p0219?: string;
-    p0640?: string;
+    p0220?: string;
+    p0156?: string;
     p0110?: string;
   };
 }
