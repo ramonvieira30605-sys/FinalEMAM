@@ -68,8 +68,3 @@ export interface KnowledgeBaseDoc {
   content: string;
   uploadDate: string;
 }
-
-export interface ChatMessage {
-  role: 'user' | 'model';
-  text: string;
-}

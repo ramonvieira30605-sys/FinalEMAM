@@ -8,7 +8,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   LayoutDashboard, 
   Package, 
-  Cpu, 
   Cloud, 
   Plus, 
   Search, 
@@ -18,7 +17,6 @@ import {
   CheckCircle2, 
   Wrench, 
   XCircle,
-  Send,
   RefreshCw,
   Trash2,
   ChevronRight,
@@ -35,8 +33,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as pdfjsLib from 'pdfjs-dist';
 import { supabase } from './supabaseClient';
-import { getGeminiResponse } from './geminiService';
-import { Asset, AssetStatus, AssetType, ChatMessage, Checklist, KnowledgeBaseDoc } from './types';
+import { Asset, AssetStatus, AssetType, Checklist, KnowledgeBaseDoc } from './types';
 
 // Set PDF.js worker using a more robust method
 try {
@@ -72,20 +69,18 @@ const StatusBadge = ({ status }: { status: AssetStatus }) => {
 };
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'inventory' | 'ai' | 'guide' | 'knowledge' | 'reports'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'inventory' | 'guide' | 'knowledge' | 'reports'>('dashboard');
   const [assets, setAssets] = useState<Asset[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
-  const [userInput, setUserInput] = useState('');
-  const [isAiLoading, setIsAiLoading] = useState(false);
   const [isAnonAuthDisabled, setIsAnonAuthDisabled] = useState(false);
   const [isGuideInModalOpen, setIsGuideInModalOpen] = useState(false);
   const [selectedType, setSelectedType] = useState<AssetType>('Motor');
   const [checklists, setChecklists] = useState<Checklist[]>([]);
   const [isChecklistModalOpen, setIsChecklistModalOpen] = useState(false);
   const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBaseDoc[]>([]);
+  const [selectedDoc, setSelectedDoc] = useState<KnowledgeBaseDoc | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
   
@@ -814,32 +809,6 @@ export default function App() {
     setIsGeneratingReport(false);
   };
 
-  const handleSendMessage = async () => {
-    if (!userInput.trim()) return;
-    
-    const userMsg: ChatMessage = { role: 'user', text: userInput };
-    setChatHistory(prev => [...prev, userMsg]);
-    setUserInput('');
-    setIsAiLoading(true);
-
-    // Prepare context from knowledge base
-    let context = "";
-    if (knowledgeBase.length > 0) {
-      context = "Base de Conhecimento (Documentos PDF):\n";
-      knowledgeBase.forEach(doc => {
-        context += `--- Documento: ${doc.name} ---\n${doc.content}\n\n`;
-      });
-      context += "\nUse APENAS as informações da Base de Conhecimento acima para responder. Se a resposta não estiver nos documentos, informe claramente que não há dados suficientes na base carregada para responder com precisão.\n\n";
-    }
-
-    const fullPrompt = context + userInput;
-
-    const response = await getGeminiResponse(chatHistory, fullPrompt);
-    const aiMsg: ChatMessage = { role: 'model', text: response };
-    setChatHistory(prev => [...prev, aiMsg]);
-    setIsAiLoading(false);
-  };
-
   if (isLoadingData) {
     return (
       <div className="flex flex-col h-screen max-w-md mx-auto bg-black items-center justify-center p-6 text-center">
@@ -972,69 +941,6 @@ export default function App() {
                     </div>
                   </div>
                 ))}
-              </div>
-            </motion.div>
-          )}
-
-          {/* AI Diagnostic */}
-          {activeTab === 'ai' && (
-            <motion.div 
-              key="ai"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="flex flex-col h-[calc(100vh-180px)]"
-            >
-              <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
-                {chatHistory.length === 0 && (
-                  <div className="text-center py-12 space-y-4">
-                    <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto border border-emerald-500/20">
-                      <Cpu className="text-emerald-500" size={32} />
-                    </div>
-                    <div className="space-y-1">
-                      <h3 className="font-bold text-lg">IA Diagnostic</h3>
-                      <p className="text-zinc-500 text-sm px-8">Especialista WEG pronto para ajudar com falhas e manutenção.</p>
-                    </div>
-                  </div>
-                )}
-                {chatHistory.map((msg, i) => (
-                  <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[85%] p-3 rounded-2xl text-sm ${
-                      msg.role === 'user' 
-                        ? 'bg-emerald-500 text-black font-medium rounded-tr-none' 
-                        : 'bg-zinc-900 border border-zinc-800 text-white rounded-tl-none'
-                    }`}>
-                      {msg.text}
-                    </div>
-                  </div>
-                ))}
-                {isAiLoading && (
-                  <div className="flex justify-start">
-                    <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-2xl rounded-tl-none flex gap-1">
-                      <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-bounce" />
-                      <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-bounce [animation-delay:0.2s]" />
-                      <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-bounce [animation-delay:0.4s]" />
-                    </div>
-                  </div>
-                )}
-              </div>
-              
-              <div className="mt-4 flex gap-2">
-                <input 
-                  type="text" 
-                  value={userInput}
-                  onChange={(e) => setUserInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                  placeholder="Descreva a falha ou peça ajuda..."
-                  className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-emerald-500/50"
-                />
-                <button 
-                  onClick={handleSendMessage}
-                  disabled={isAiLoading || !userInput.trim()}
-                  className="w-12 h-12 bg-emerald-500 text-black rounded-xl flex items-center justify-center disabled:opacity-50 active:scale-95 transition-all"
-                >
-                  <Send size={20} />
-                </button>
               </div>
             </motion.div>
           )}
@@ -1286,19 +1192,32 @@ export default function App() {
                 <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Documentos Carregados ({knowledgeBase.length})</h4>
                 {knowledgeBase.map(doc => (
                   <div key={doc.id} className="dark-card flex items-center justify-between group">
-                    <div className="flex items-center gap-3">
+                    <div 
+                      className="flex items-center gap-3 flex-1 cursor-pointer"
+                      onClick={() => setSelectedDoc(doc)}
+                    >
                       <FileText className="text-emerald-500" size={18} />
                       <div>
                         <p className="font-semibold text-sm truncate max-w-[180px]">{doc.name}</p>
                         <p className="text-[10px] text-zinc-500">{new Date(doc.uploadDate).toLocaleDateString()}</p>
                       </div>
                     </div>
-                    <button 
-                      onClick={() => removeDoc(doc.id)}
-                      className="p-2 text-zinc-600 hover:text-red-500 transition-colors"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={() => setSelectedDoc(doc)}
+                        className="p-2 text-zinc-400 hover:text-emerald-500 transition-colors"
+                        title="Visualizar"
+                      >
+                        <BookOpen size={16} />
+                      </button>
+                      <button 
+                        onClick={() => removeDoc(doc.id)}
+                        className="p-2 text-zinc-600 hover:text-red-500 transition-colors"
+                        title="Excluir"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
                 ))}
                 {knowledgeBase.length === 0 && (
@@ -1330,13 +1249,6 @@ export default function App() {
           <span className="text-[10px] font-bold">Ativos</span>
         </button>
         <button 
-          onClick={() => setActiveTab('ai')}
-          className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'ai' ? 'text-emerald-500' : 'text-zinc-600'}`}
-        >
-          <Cpu size={20} />
-          <span className="text-[10px] font-bold">IA</span>
-        </button>
-        <button 
           onClick={() => setActiveTab('knowledge')}
           className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'knowledge' ? 'text-emerald-500' : 'text-zinc-600'}`}
         >
@@ -1351,6 +1263,46 @@ export default function App() {
           <span className="text-[10px] font-bold">Relatórios</span>
         </button>
       </nav>
+
+      {/* Document Viewer Modal */}
+      <AnimatePresence>
+        {selectedDoc && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/90 backdrop-blur-md z-[70] flex flex-col"
+          >
+            <div className="p-6 flex justify-between items-center border-b border-zinc-800">
+              <div className="flex items-center gap-3">
+                <FileText className="text-emerald-500" />
+                <h3 className="font-bold text-white truncate max-w-[200px]">{selectedDoc.name}</h3>
+              </div>
+              <button 
+                onClick={() => setSelectedDoc(null)}
+                className="w-10 h-10 bg-zinc-800 rounded-full flex items-center justify-center text-white"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 bg-zinc-950">
+              <div className="max-w-2xl mx-auto">
+                <pre className="text-zinc-300 text-sm whitespace-pre-wrap font-sans leading-relaxed">
+                  {selectedDoc.content}
+                </pre>
+              </div>
+            </div>
+            <div className="p-6 border-t border-zinc-800 bg-zinc-900 flex justify-center">
+              <button 
+                onClick={() => setSelectedDoc(null)}
+                className="px-8 py-3 bg-emerald-500 text-black font-bold rounded-xl active:scale-95 transition-all"
+              >
+                FECHAR MANUAL
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Add Asset Modal */}
       <AnimatePresence>
