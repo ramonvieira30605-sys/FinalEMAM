@@ -26,13 +26,13 @@ import {
   Zap,
   Activity,
   AlertTriangle,
-  Database
+  Database,
+  Upload
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as pdfjsLib from 'pdfjs-dist';
-import { supabase } from './supabaseClient';
 import { Asset, AssetStatus, AssetType, Checklist, KnowledgeBaseDoc } from './types';
 
 // Set PDF.js worker using a more robust method
@@ -73,8 +73,6 @@ export default function App() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [isAnonAuthDisabled, setIsAnonAuthDisabled] = useState(false);
   const [isGuideInModalOpen, setIsGuideInModalOpen] = useState(false);
   const [selectedType, setSelectedType] = useState<AssetType>('Motor');
   const [checklists, setChecklists] = useState<Checklist[]>([]);
@@ -86,7 +84,6 @@ export default function App() {
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [kbSearchTerm, setKbSearchTerm] = useState('');
   const [docSearchTerm, setDocSearchTerm] = useState('');
-  const [syncNext, setSyncNext] = useState(false);
   
   // New states for Reports
   const [reportTechnician, setReportTechnician] = useState('');
@@ -114,14 +111,9 @@ export default function App() {
     );
   };
 
-  // Load from LocalStorage (initial) and then Supabase
+  // Load from LocalStorage
   useEffect(() => {
-    const loadInitialData = async () => {
-      // Set a safety timeout to prevent infinite loading
-      const timeoutId = setTimeout(() => {
-        setIsLoadingData(false);
-      }, 5000);
-
+    const loadInitialData = () => {
       try {
         const savedAssets = localStorage.getItem('emam_assets');
         if (savedAssets) setAssets(JSON.parse(savedAssets));
@@ -133,124 +125,9 @@ export default function App() {
         if (savedKnowledge) setKnowledgeBase(JSON.parse(savedKnowledge));
       } catch (e) {
         console.error('Failed to parse local storage', e);
+      } finally {
+        setIsLoadingData(false);
       }
-      
-      // Anonymous Login and Cloud Fetch
-      const initAuthAndFetch = async () => {
-        if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
-          console.warn('Supabase credentials missing. App running in Local-Only mode.');
-          clearTimeout(timeoutId);
-          setIsLoadingData(false);
-          return;
-        }
-
-        try {
-          const { data: { user }, error: authError } = await supabase.auth.getUser();
-          let currentUser = user;
-
-          if (authError || !user) {
-            const { data: signInData, error: signInError } = await supabase.auth.signInAnonymously();
-            if (signInError) {
-              console.error('Supabase Auth Error:', signInError.message);
-              if (signInError.message.includes('Anonymous sign-ins are disabled')) {
-                setIsAnonAuthDisabled(true);
-              }
-              clearTimeout(timeoutId);
-              setIsLoadingData(false);
-              return;
-            }
-            currentUser = signInData.user;
-          }
-
-          setIsAnonAuthDisabled(false);
-          
-          if (currentUser) {
-            // Fetch Assets
-            const { data: cloudAssets, error: assetsError } = await supabase
-              .from('assets')
-              .select('*')
-              .eq('user_id', currentUser.id);
-            
-            if (cloudAssets && !assetsError && cloudAssets.length > 0) {
-              const mappedAssets: Asset[] = cloudAssets.map(a => ({
-                id: a.id,
-                name: a.name,
-                type: a.type as AssetType,
-                model: a.model || '',
-                serialNumber: a.serial_number || '',
-                location: a.location || '',
-                status: a.status as AssetStatus,
-                lastUpdated: a.last_updated,
-                createdAt: a.created_at,
-                technicalParams: a.technical_params || {}
-              }));
-              setAssets(mappedAssets);
-            }
-
-            // Fetch Checklists
-            const { data: cloudChecklists, error: checklistsError } = await supabase
-              .from('checklists')
-              .select('*')
-              .eq('user_id', currentUser.id);
-            
-            if (cloudChecklists && !checklistsError && cloudChecklists.length > 0) {
-              const mappedChecklists: Checklist[] = cloudChecklists.map(c => {
-                let items = { observations: c.observations || '' };
-                try {
-                  // Try to parse JSON from observations if it starts with {
-                  if (c.observations && c.observations.startsWith('{')) {
-                    items = JSON.parse(c.observations);
-                  } else {
-                    // Fallback for old data
-                    items = {
-                      ...items,
-                      vibration: c.vibration,
-                      temperature: c.temperature,
-                      noise: c.noise,
-                      currentCheck: c.current_check,
-                      errorCodes: c.error_codes,
-                    } as any;
-                  }
-                } catch (e) {
-                  console.warn('Failed to parse checklist items', e);
-                }
-                return {
-                  id: c.id,
-                  assetId: c.asset_id,
-                  date: c.date,
-                  technician: c.technician,
-                  items
-                };
-              });
-              setChecklists(mappedChecklists);
-            }
-
-            // Fetch Knowledge Base
-            const { data: cloudKB, error: kbError } = await supabase
-              .from('knowledge_base')
-              .select('*')
-              .eq('user_id', currentUser.id);
-            
-            if (cloudKB && !kbError && cloudKB.length > 0) {
-              const mappedKB: KnowledgeBaseDoc[] = cloudKB.map(doc => ({
-                id: doc.id,
-                name: doc.name,
-                content: doc.content,
-                fileData: doc.file_data,
-                uploadDate: doc.upload_date
-              }));
-              setKnowledgeBase(mappedKB);
-            }
-          }
-        } catch (e) {
-          console.error('Auth/Fetch init failed', e);
-        } finally {
-          clearTimeout(timeoutId);
-          setIsLoadingData(false);
-        }
-      };
-      
-      initAuthAndFetch();
     };
 
     loadInitialData();
@@ -269,110 +146,11 @@ export default function App() {
     localStorage.setItem('emam_knowledge', JSON.stringify(knowledgeBase));
   }, [knowledgeBase]);
 
-  const silentSync = async () => {
-    if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) return;
-    
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const userId = user.id;
-
-      // Sync Assets
-      if (assets.length > 0) {
-        await supabase.from('assets').upsert(assets.map(a => ({
-          id: a.id,
-          name: a.name,
-          type: a.type,
-          model: a.model,
-          serial_number: a.serialNumber,
-          location: a.location,
-          status: a.status,
-          technical_params: a.technicalParams,
-          last_updated: a.lastUpdated,
-          user_id: userId
-        })));
-      }
-
-      // Sync Checklists
-      if (checklists.length > 0) {
-        await supabase.from('checklists').upsert(checklists.map(c => ({
-          id: c.id,
-          asset_id: c.assetId,
-          date: c.date,
-          technician: c.technician,
-          // Store all items as JSON in observations to preserve new technical fields
-          observations: JSON.stringify(c.items),
-          user_id: userId
-        })));
-      }
-
-      // Sync Knowledge Base
-      if (knowledgeBase.length > 0) {
-        await supabase.from('knowledge_base').upsert(knowledgeBase.map(doc => ({
-          id: doc.id,
-          name: doc.name,
-          content: doc.content,
-          upload_date: doc.uploadDate,
-          user_id: userId
-        })));
-      }
-    } catch (e) {
-      console.warn('Silent sync failed', e);
-    }
-  };
-
   const stats = useMemo(() => ({
     total: assets.length,
     operational: assets.filter(a => a.status === 'Operacional').length,
     alerts: assets.filter(a => a.status !== 'Operacional').length,
   }), [assets]);
-
-  const handleAddChecklist = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!selectedAsset) return;
-
-    const formData = new FormData(e.currentTarget);
-    const newChecklist: Checklist = {
-      id: crypto.randomUUID(),
-      assetId: selectedAsset.id,
-      date: new Date().toISOString(),
-      technician: formData.get('technician') as string,
-      items: {
-        // Acionamentos
-        p0003_current: formData.get('p0003_current') as string,
-        p0004_link_dc: formData.get('p0004_link_dc') as string,
-        p006_status: formData.get('p006_status') as string,
-        starting_current_peak: formData.get('starting_current_peak') as string,
-        
-        // Motobomba
-        discharge_pressure: formData.get('discharge_pressure') as string,
-        casing_temperature: formData.get('casing_temperature') as string,
-        gland_drip: formData.get('gland_drip') as string,
-        mechanical_seal_leak: formData.get('mechanical_seal_leak') as string,
-        
-        // Compressores
-        load_pressure: formData.get('load_pressure') as string,
-        unload_pressure: formData.get('unload_pressure') as string,
-        unit_temperature: formData.get('unit_temperature') as string,
-        condensate_drain_oil: formData.get('condensate_drain_oil') as string,
-        
-        // Quadros
-        phase_unbalance: formData.get('phase_unbalance') as string,
-        terminal_temperature: formData.get('terminal_temperature') as string,
-        dps_status: formData.get('dps_status') as string,
-        
-        observations: formData.get('observations') as string,
-      }
-    };
-
-    setChecklists(prev => [newChecklist, ...prev]);
-    setIsChecklistModalOpen(false);
-
-    if (syncNext) {
-      setTimeout(() => syncWithCloud(), 500);
-    }
-  };
 
   const generatePDF = (checklist: Checklist, asset: Asset) => {
     const doc = new jsPDF();
@@ -552,6 +330,57 @@ export default function App() {
     setKnowledgeBase(prev => prev.filter(doc => doc.id !== id));
   };
 
+  // Save to LocalStorage whenever data changes
+  useEffect(() => {
+    if (!isLoadingData) {
+      localStorage.setItem('emam_assets', JSON.stringify(assets));
+      localStorage.setItem('emam_checklists', JSON.stringify(checklists));
+      localStorage.setItem('emam_knowledge', JSON.stringify(knowledgeBase));
+    }
+  }, [assets, checklists, knowledgeBase, isLoadingData]);
+
+  const exportData = () => {
+    const data = {
+      assets,
+      checklists,
+      knowledgeBase,
+      exportDate: new Date().toISOString(),
+      version: '4.0'
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `EMAM_Backup_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importData = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target?.result as string);
+        if (data.assets && data.checklists) {
+          if (confirm('Isso irá substituir seus dados atuais pelos dados do arquivo. Deseja continuar?')) {
+            setAssets(data.assets);
+            setChecklists(data.checklists);
+            if (data.knowledgeBase) setKnowledgeBase(data.knowledgeBase);
+            alert('Dados importados com sucesso!');
+          }
+        } else {
+          alert('Arquivo de backup inválido.');
+        }
+      } catch (err) {
+        alert('Erro ao ler o arquivo de backup.');
+      }
+    };
+    reader.readAsText(file);
+  };
+
   const handleAddAsset = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -584,10 +413,6 @@ export default function App() {
     };
     setAssets(prev => [newAsset, ...prev]);
     setIsModalOpen(false);
-    
-    if (syncNext) {
-      setTimeout(() => syncWithCloud(), 500);
-    }
   };
 
   const handleDeleteAsset = (id: string) => {
@@ -597,89 +422,34 @@ export default function App() {
     }
   };
 
-  const syncWithCloud = async () => {
-    if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
-      alert('ERRO DE CONFIGURAÇÃO: As chaves do Supabase não foram encontradas nas variáveis de ambiente.\n\nSe você está no Vercel, adicione VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY nas configurações do projeto.');
-      return;
-    }
+  const handleAddChecklist = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!selectedAsset) return;
 
-    setIsSyncing(true);
-    try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      
-      if (userError || !user) {
-        // Try to sign in again if no user
-        const { data: signInData, error: signInError } = await supabase.auth.signInAnonymously();
-        if (signInError) {
-          if (signInError.message.includes('Anonymous sign-ins are disabled')) {
-            alert('ERRO: O login anônimo está desativado no seu projeto Supabase. \n\nPara corrigir:\n1. Vá ao Dashboard do Supabase\n2. Authentication -> Providers -> Anonymous\n3. Ative "Allow anonymous sign-ins"\n4. Salve e tente novamente.');
-          } else {
-            alert(`Erro de autenticação: ${signInError.message}`);
-          }
-          setIsSyncing(false);
-          return;
-        }
+    const formData = new FormData(e.currentTarget);
+    const technician = formData.get('technician') as string;
+    
+    // Collect all fields from the form into the 'items' object
+    const items: any = {
+      observations: formData.get('observations') as string || ''
+    };
+    
+    formData.forEach((value, key) => {
+      if (key !== 'technician' && key !== 'observations') {
+        items[key] = value;
       }
+    });
 
-      const { data: { user: activeUser } } = await supabase.auth.getUser();
-      const userId = activeUser?.id;
+    const newChecklist: Checklist = {
+      id: crypto.randomUUID(),
+      assetId: selectedAsset.id,
+      date: new Date().toISOString(),
+      technician,
+      items
+    };
 
-      const { error: assetsError } = await supabase
-        .from('assets')
-        .upsert(assets.map(a => ({
-          id: a.id,
-          name: a.name,
-          type: a.type,
-          model: a.model,
-          serial_number: a.serialNumber,
-          location: a.location,
-          status: a.status,
-          technical_params: a.technicalParams,
-          last_updated: a.lastUpdated,
-          user_id: userId
-        })));
-
-      if (assetsError) throw assetsError;
-
-      // Sync Checklists
-      if (checklists.length > 0) {
-        const { error: checklistsError } = await supabase
-          .from('checklists')
-          .upsert(checklists.map(c => ({
-            id: c.id,
-            asset_id: c.assetId,
-            date: c.date,
-            technician: c.technician,
-            // Store all items as JSON in observations to preserve new technical fields
-            observations: JSON.stringify(c.items),
-            user_id: userId
-          })));
-        if (checklistsError) throw checklistsError;
-      }
-
-      // Sync Knowledge Base
-      if (knowledgeBase.length > 0) {
-        const { error: kbError } = await supabase
-          .from('knowledge_base')
-          .upsert(knowledgeBase.map(doc => ({
-            id: doc.id,
-            name: doc.name,
-            content: doc.content,
-            file_data: doc.fileData,
-            upload_date: doc.uploadDate,
-            user_id: userId
-          })));
-        if (kbError) throw kbError;
-      }
-
-      alert('Sincronização concluída com sucesso!');
-    } catch (error: any) {
-      console.error('Sync Error:', error);
-      const errorMessage = error?.message || 'Erro desconhecido';
-      alert(`ERRO NA SINCRONIZAÇÃO:\n\n${errorMessage}\n\nVerifique:\n1. Se as tabelas foram criadas no Supabase.\n2. Se o "Anonymous Auth" está ativado.\n3. Se as chaves VITE_ no Vercel estão corretas.`);
-    } finally {
-      setIsSyncing(false);
-    }
+    setChecklists(prev => [newChecklist, ...prev]);
+    setIsChecklistModalOpen(false);
   };
 
   const exportPDF = (asset: Asset) => {
@@ -828,7 +598,7 @@ export default function App() {
           ['Total de Checklists Realizados', stats.totalChecklists],
           ['Ativos em Estado Crítico', stats.criticalAssets],
           ['Documentos na Base de Conhecimento', stats.docsInKb],
-          ['Sincronização Cloud', 'Ativa (Supabase)'],
+          ['Modo de Operação', 'Local/Offline (Backup Manual)'],
         ],
         theme: 'grid',
       });
@@ -847,25 +617,8 @@ export default function App() {
             <h1 className="text-2xl font-black text-emerald-500">V4</h1>
           </div>
         </div>
-        <h2 className="text-xl font-bold text-white mb-2">EMAM Cloud Sync</h2>
-        <p className="text-zinc-500 text-sm mb-8">Escolha como deseja iniciar o aplicativo.</p>
-        
-        <div className="space-y-4 w-full">
-          <button 
-            onClick={() => window.location.reload()}
-            className="w-full py-4 bg-emerald-500 text-black rounded-2xl text-sm font-bold flex items-center justify-center gap-2 active:scale-95 transition-all"
-          >
-            <RefreshCw size={18} />
-            SINCRONIZAR COM NUVEM
-          </button>
-          <button 
-            onClick={() => setIsLoadingData(false)}
-            className="w-full py-4 bg-zinc-900 border border-zinc-800 text-white rounded-2xl text-sm font-bold flex items-center justify-center gap-2 active:scale-95 transition-all"
-          >
-            <Cloud size={18} className="text-zinc-500" />
-            MODO OFFLINE (LOCAL)
-          </button>
-        </div>
+        <h2 className="text-xl font-bold text-white mb-2">EMAM/ELT</h2>
+        <p className="text-zinc-500 text-sm">Carregando dados locais...</p>
       </div>
     );
   }
@@ -908,23 +661,30 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="dark-card bg-emerald-500/5 border-emerald-500/20 flex items-center justify-between">
+              <div className="dark-card bg-zinc-900/50 border-zinc-800 space-y-4">
                 <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-lg ${isSyncing ? 'bg-emerald-500/20' : 'bg-zinc-800'}`}>
-                    <Cloud className={isSyncing ? 'text-emerald-500 animate-pulse' : 'text-zinc-500'} size={20} />
+                  <div className="p-2 rounded-lg bg-zinc-800">
+                    <Database className="text-emerald-500" size={20} />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-white">Sincronização Cloud</p>
-                    <p className="text-[10px] text-zinc-500 uppercase tracking-widest">{isSyncing ? 'Sincronizando...' : 'Manual'}</p>
+                    <p className="text-xs font-bold text-white">Backup & Transferência</p>
+                    <p className="text-[10px] text-zinc-500 uppercase tracking-widest">Gestão de Dados Offline</p>
                   </div>
                 </div>
-                <button 
-                  onClick={syncWithCloud}
-                  disabled={isSyncing}
-                  className="px-4 py-2 bg-emerald-500 text-black text-[10px] font-black rounded-xl active:scale-95 transition-all disabled:opacity-50"
-                >
-                  {isSyncing ? '...' : 'SINCRONIZAR'}
-                </button>
+                <div className="grid grid-cols-2 gap-3">
+                  <button 
+                    onClick={exportData}
+                    className="flex-1 py-3 bg-zinc-800 hover:bg-zinc-700 text-white text-[10px] font-black rounded-xl active:scale-95 transition-all flex items-center justify-center gap-2"
+                  >
+                    <Download size={14} />
+                    EXPORTAR
+                  </button>
+                  <label className="flex-1 py-3 bg-zinc-800 hover:bg-zinc-700 text-white text-[10px] font-black rounded-xl active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer">
+                    <Upload size={14} />
+                    IMPORTAR
+                    <input type="file" accept=".json" onChange={importData} className="hidden" />
+                  </label>
+                </div>
               </div>
 
               <button 
@@ -1611,20 +1371,12 @@ export default function App() {
                   <label className="text-[10px] font-bold text-zinc-500 uppercase">Localização</label>
                   <input name="location" placeholder="Ex: Setor de Britagem" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3">
                   <button 
                     type="submit" 
-                    onClick={() => setSyncNext(false)}
-                    className="py-4 bg-zinc-800 text-white font-bold rounded-2xl active:scale-95 transition-all text-xs"
+                    className="py-4 bg-emerald-500 text-black font-bold rounded-2xl active:scale-95 transition-all text-sm"
                   >
-                    SALVAR OFFLINE
-                  </button>
-                  <button 
-                    type="submit" 
-                    onClick={() => setSyncNext(true)}
-                    className="py-4 bg-emerald-500 text-black font-bold rounded-2xl active:scale-95 transition-all text-xs"
-                  >
-                    SALVAR ONLINE
+                    SALVAR ATIVO WEG
                   </button>
                 </div>
               </form>
@@ -1814,20 +1566,12 @@ export default function App() {
                   <textarea name="observations" rows={3} placeholder="Alguma anomalia ou ruído estranho?" className="w-full bg-black border border-zinc-800 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-emerald-500/50 resize-none" />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3">
                   <button 
                     type="submit" 
-                    onClick={() => setSyncNext(false)}
-                    className="py-4 bg-zinc-800 text-white font-bold rounded-2xl active:scale-95 transition-all text-xs"
+                    className="py-4 bg-emerald-500 text-black font-bold rounded-2xl active:scale-95 transition-all text-sm"
                   >
-                    SALVAR OFFLINE
-                  </button>
-                  <button 
-                    type="submit" 
-                    onClick={() => setSyncNext(true)}
-                    className="py-4 bg-emerald-500 text-black font-bold rounded-2xl active:scale-95 transition-all text-xs"
-                  >
-                    SALVAR ONLINE
+                    SALVAR CHECKLIST
                   </button>
                 </div>
               </form>
