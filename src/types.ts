@@ -19,6 +19,7 @@ export interface Asset {
     voltage?: string;
     serviceFactor?: string;
     connectedMotor?: string;
+    p0100?: string;
     p0101?: string;
     p0102?: string;
     p0104?: string;

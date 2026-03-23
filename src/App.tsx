@@ -234,7 +234,19 @@ export default function App() {
       doc.setFontSize(14);
       doc.text('PARÂMETROS TÉCNICOS CONFIGURADOS', 14, startYParams);
       
-      const paramsData = [
+      const paramsData = asset.type === 'Inversor' ? [
+        ['Corrente (P0401):', asset.technicalParams.current || '-'],
+        ['RPM (P0402):', asset.technicalParams.rpm || '-'],
+        ['Freq (P0403):', asset.technicalParams.frequency || '-'],
+        ['Potência (P0404):', asset.technicalParams.power || '-'],
+        ['Tensão (P0400):', asset.technicalParams.voltage || '-'],
+        ['Fator Serviço (P0406):', asset.technicalParams.serviceFactor || '-'],
+        ['Tempo Acel (P0100):', asset.technicalParams.p0100 || '-'],
+        ['Tempo Desacel (P0101):', asset.technicalParams.p0101 || '-'],
+        ['Tipo Controle (P0202):', asset.technicalParams.p0202 || '-'],
+        ['Seleção L/R (P0220):', asset.technicalParams.p0220 || '-'],
+        ['Corrente Sobrecarga (P0156):', asset.technicalParams.p0156 || '-']
+      ] : [
         ['Corrente (P0401):', asset.technicalParams.current || '-'],
         ['RPM (P0402):', asset.technicalParams.rpm || '-'],
         ['Freq (P0403):', asset.technicalParams.frequency || '-'],
@@ -243,8 +255,9 @@ export default function App() {
         ['Fator Serviço (P0406):', asset.technicalParams.serviceFactor || '-'],
         ['Tensão Inicial (P0101):', asset.technicalParams.p0101 || '-'],
         ['Tempo Acel (P0102):', asset.technicalParams.p0102 || '-'],
-        ['Seleção L/R (P0220):', asset.technicalParams.p0220 || '-'],
-        ['Corrente Sobrecarga (P0156):', asset.technicalParams.p0156 || '-']
+        ['Tempo Desacel (P0104):', asset.technicalParams.p0104 || '-'],
+        ['Tipo Partida (P0202):', asset.technicalParams.p0202 || '-'],
+        ['Limite Corrente (P0110):', asset.technicalParams.p0110 || '-']
       ];
 
       (doc as any).autoTable({
@@ -402,6 +415,7 @@ export default function App() {
         voltage: formData.get('voltage') as string,
         serviceFactor: formData.get('serviceFactor') as string,
         connectedMotor: formData.get('connectedMotor') as string,
+        p0100: formData.get('p0100') as string,
         p0101: formData.get('p0101') as string,
         p0102: formData.get('p0102') as string,
         p0104: formData.get('p0104') as string,
@@ -875,7 +889,7 @@ export default function App() {
                           <li><span className="font-mono text-white">P0102:</span> Tempo Aceleração (Ex: 15s)</li>
                           <li><span className="font-mono text-white">P0104:</span> Tempo Desaceleração (0=Livre)</li>
                           <li><span className="font-mono text-white">P0202:</span> Tipo (0=Rampa, 1=Limite)</li>
-                          <li><span className="font-mono text-white">P0220:</span> Seleção L/R (0=Local, 1=Remoto)</li>
+                          <li><span className="font-mono text-white">P0110:</span> Limite de Corrente (%)</li>
                         </ul>
                       </div>
                       <div className="bg-black/40 rounded-xl p-4 border border-zinc-800/50">
@@ -884,7 +898,6 @@ export default function App() {
                           <li><span className="font-mono text-white">P0400:</span> Tensão Nominal (220/380/440V)</li>
                           <li><span className="font-mono text-white">P0401:</span> Corrente Nominal (Amperes)</li>
                           <li><span className="font-mono text-white">P0406:</span> Fator de Serviço (Placa)</li>
-                          <li><span className="font-mono text-white">P0156:</span> Corrente Sobrecarga (Proteção)</li>
                         </ul>
                       </div>
                     </div>
@@ -929,7 +942,8 @@ export default function App() {
                           <li><span className="font-mono text-white">P0100:</span> Tempo Aceleração (s)</li>
                           <li><span className="font-mono text-white">P0101:</span> Tempo Desaceleração (s)</li>
                           <li><span className="font-mono text-white">P0202:</span> Controle (0=V/f, 5=VVW)</li>
-                          <li><span className="font-mono text-white">P0221:</span> Ref. Local (IHM/Pot)</li>
+                          <li><span className="font-mono text-white">P0220:</span> Seleção L/R (0=Local, 1=Remoto)</li>
+                          <li><span className="font-mono text-white">P0156:</span> Corrente Sobrecarga (A)</li>
                         </ul>
                       </div>
                     </div>
@@ -1331,34 +1345,53 @@ export default function App() {
                       </div>
                       
                       <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Tensão Inicial (P0101)</label>
-                          <input name="p0101" placeholder="Ex: 40%" className="w-full bg-black border border-zinc-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-emerald-500/50" />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Tempo Acel. (P0102)</label>
-                          <input name="p0102" placeholder="Ex: 15s" className="w-full bg-black border border-zinc-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-emerald-500/50" />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Tempo Desacel. (P0104)</label>
-                          <input name="p0104" placeholder="Ex: 0s" className="w-full bg-black border border-zinc-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-emerald-500/50" />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Tipo Partida (P0202)</label>
-                          <input name="p0202" placeholder="0=Rampa, 1=Limite" className="w-full bg-black border border-zinc-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-emerald-500/50" />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Seleção L/R (P0220)</label>
-                          <input name="p0220" placeholder="0=Local, 1=Remoto" className="w-full bg-black border border-zinc-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-emerald-500/50" />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Corrente Sobrecarga (P0156)</label>
-                          <input name="p0156" placeholder="Ex: 1.1 * In" className="w-full bg-black border border-zinc-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-emerald-500/50" />
-                        </div>
-                        <div className="space-y-1 col-span-2">
-                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Limite de Corrente (P0110)</label>
-                          <input name="p0110" placeholder="Ex: 300%" className="w-full bg-black border border-zinc-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-emerald-500/50" />
-                        </div>
+                        {selectedType === 'Inversor' ? (
+                          <>
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-zinc-500 uppercase">Tempo Acel. (P0100)</label>
+                              <input name="p0100" placeholder="Ex: 10s" className="w-full bg-black border border-zinc-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-emerald-500/50" />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-zinc-500 uppercase">Tempo Desacel. (P0101)</label>
+                              <input name="p0101" placeholder="Ex: 10s" className="w-full bg-black border border-zinc-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-emerald-500/50" />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-zinc-500 uppercase">Tipo Controle (P0202)</label>
+                              <input name="p0202" placeholder="0=V/f, 1=VVW, 2=Vetor" className="w-full bg-black border border-zinc-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-emerald-500/50" />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-zinc-500 uppercase">Seleção L/R (P0220)</label>
+                              <input name="p0220" placeholder="0=Local, 1=Remoto" className="w-full bg-black border border-zinc-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-emerald-500/50" />
+                            </div>
+                            <div className="space-y-1 col-span-2">
+                              <label className="text-[10px] font-bold text-zinc-500 uppercase">Corrente Sobrecarga (P0156)</label>
+                              <input name="p0156" placeholder="Ex: 1.1 * In" className="w-full bg-black border border-zinc-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-emerald-500/50" />
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-zinc-500 uppercase">Tensão Inicial (P0101)</label>
+                              <input name="p0101" placeholder="Ex: 40%" className="w-full bg-black border border-zinc-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-emerald-500/50" />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-zinc-500 uppercase">Tempo Acel. (P0102)</label>
+                              <input name="p0102" placeholder="Ex: 15s" className="w-full bg-black border border-zinc-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-emerald-500/50" />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-zinc-500 uppercase">Tempo Desacel. (P0104)</label>
+                              <input name="p0104" placeholder="Ex: 0s" className="w-full bg-black border border-zinc-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-emerald-500/50" />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-zinc-500 uppercase">Tipo Partida (P0202)</label>
+                              <input name="p0202" placeholder="0=Rampa, 1=Limite" className="w-full bg-black border border-zinc-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-emerald-500/50" />
+                            </div>
+                            <div className="space-y-1 col-span-2">
+                              <label className="text-[10px] font-bold text-zinc-500 uppercase">Limite de Corrente (P0110)</label>
+                              <input name="p0110" placeholder="Ex: 300%" className="w-full bg-black border border-zinc-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-emerald-500/50" />
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1668,13 +1701,26 @@ export default function App() {
                 <div className="space-y-3 pt-4 border-t border-zinc-800/50">
                   <h4 className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Configuração Atual do Drive</h4>
                   <div className="grid grid-cols-2 gap-2">
-                    {[
+                    {selectedAsset.type === 'Inversor' ? [
+                      { label: 'Tempo Acel.', key: 'p0100', param: 'P0100' },
+                      { label: 'Tempo Desacel.', key: 'p0101', param: 'P0101' },
+                      { label: 'Tipo Controle', key: 'p0202', param: 'P0202' },
+                      { label: 'Seleção L/R', key: 'p0220', param: 'P0220' },
+                      { label: 'Corrente Sobrecarga', key: 'p0156', param: 'P0156' },
+                    ].map((item) => {
+                      const value = (selectedAsset.technicalParams as any)[item.key];
+                      if (!value) return null;
+                      return (
+                        <div key={item.key} className="p-3 bg-zinc-800/50 rounded-xl border border-zinc-700/30">
+                          <p className="text-[8px] text-zinc-500 font-bold uppercase">{item.label} ({item.param})</p>
+                          <p className="text-xs font-mono text-white">{value}</p>
+                        </div>
+                      );
+                    }) : [
                       { label: 'Tensão Inicial', key: 'p0101', param: 'P0101' },
                       { label: 'Tempo Acel.', key: 'p0102', param: 'P0102' },
                       { label: 'Tempo Desacel.', key: 'p0104', param: 'P0104' },
                       { label: 'Tipo Partida', key: 'p0202', param: 'P0202' },
-                      { label: 'Seleção L/R', key: 'p0220', param: 'P0220' },
-                      { label: 'Corrente Sobrecarga', key: 'p0156', param: 'P0156' },
                       { label: 'Limite Corrente', key: 'p0110', param: 'P0110' },
                     ].map((item) => {
                       const value = (selectedAsset.technicalParams as any)[item.key];
