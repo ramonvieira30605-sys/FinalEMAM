@@ -673,9 +673,10 @@ export default function App() {
       }
 
       alert('Sincronização concluída com sucesso!');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Sync Error:', error);
-      alert('Erro ao sincronizar. Verifique se as credenciais do Supabase nos Secrets estão corretas e se as tabelas (assets, checklists, knowledge_base) foram criadas.');
+      const errorMessage = error?.message || 'Erro desconhecido';
+      alert(`ERRO NA SINCRONIZAÇÃO:\n\n${errorMessage}\n\nVerifique:\n1. Se as tabelas foram criadas no Supabase.\n2. Se o "Anonymous Auth" está ativado.\n3. Se as chaves VITE_ no Vercel estão corretas.`);
     } finally {
       setIsSyncing(false);
     }
