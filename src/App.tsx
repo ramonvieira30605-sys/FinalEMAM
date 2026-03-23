@@ -1666,29 +1666,51 @@ export default function App() {
                 <div className="space-y-4 pt-4 border-t border-zinc-800/50">
                   <h4 className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Medições Físicas / Parâmetros</h4>
                   
-                  {selectedAsset.type === 'Inversor' && (
-                    <div className="grid grid-cols-1 gap-4">
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Corrente de Saída (P0003) - Ampères</label>
-                        <input name="p0003_current" required placeholder="Ex: 12.5" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
-                        <p className="text-[9px] text-zinc-600 italic">Variação &gt;10% indica problema mecânico.</p>
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Tensão Link DC (P0004) - Volts</label>
-                        <input name="p0004_link_dc" required placeholder="Padrão: 530V - 550V" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
-                      </div>
-                    </div>
-                  )}
+                  {/* Dica Pro */}
+                  <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                    <p className="text-[9px] text-emerald-500 font-bold uppercase mb-1 flex items-center gap-1">
+                      <Zap size={10} /> Dica Pro
+                    </p>
+                    <p className="text-[10px] text-zinc-400 leading-tight">
+                      Sempre verifique a tensão de linha na entrada do QBT. Oscilações &gt;10% são a causa nº 1 de queima de eletrônica.
+                    </p>
+                  </div>
 
-                  {selectedAsset.type === 'Soft-Starter' && (
+                  {(selectedAsset.type === 'Inversor' || selectedAsset.type === 'Soft-Starter') && (
                     <div className="grid grid-cols-1 gap-4">
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Status (P006)</label>
-                        <input name="p006_status" required placeholder="Ex: rdY, PASS ou Exx" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Conexões de Potência (L1, L2, L3 / U, V, W)</label>
+                        <select name="power_connections" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50">
+                          <option>Reapertado / OK</option>
+                          <option>Necessita Manutenção</option>
+                        </select>
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Corrente de Partida (Pico)</label>
-                        <input name="starting_current_peak" required placeholder="Observar pico na partida" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Conexões de Controle (Sinal/Comunicação)</label>
+                        <select name="control_connections" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50">
+                          <option>Firme / Sem Interferência</option>
+                          <option>Com Folga / Ruído</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Capacitores (Visual)</label>
+                        <select name="capacitors_visual" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50">
+                          <option>Normal (Sem Estufamento)</option>
+                          <option>Estufado / Vazamento</option>
+                        </select>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Aterramento (Cont.)</label>
+                          <input name="grounding_continuity" placeholder="Ex: < 0.1 Ω" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Ventoinhas</label>
+                          <select name="fans_operation" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50">
+                            <option>Operando OK</option>
+                            <option>Ruído / Parada</option>
+                          </select>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -1696,55 +1718,40 @@ export default function App() {
                   {selectedAsset.type === 'Motor' && (
                     <div className="grid grid-cols-1 gap-4">
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Pressão de Descarga (bar/psi)</label>
-                        <input name="discharge_pressure" required placeholder="Ex: 6.5 bar" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Resistência de Isolação (Megômetro)</label>
+                        <input name="insulation_resistance" required placeholder="Ex: > 500 MΩ" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Temperatura de Carcaça (°C)</label>
-                        <input name="casing_temperature" required placeholder="Ex: 45°C" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Gotejamento Gaxeta</label>
-                          <select name="gland_drip" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50">
-                            <option>Normal (Gotas/min)</option>
-                            <option>Excessivo</option>
-                            <option>Seco (Risco)</option>
-                          </select>
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Selo Mecânico</label>
-                          <select name="mechanical_seal_leak" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50">
-                            <option>Zero Vazamento</option>
-                            <option>Com Vazamento</option>
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {selectedAsset.type === 'Compressor' && (
-                    <div className="grid grid-cols-1 gap-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Pressão Carga</label>
-                          <input name="load_pressure" required placeholder="Ex: 7.0 bar" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Pressão Alívio</label>
-                          <input name="unload_pressure" required placeholder="Ex: 8.5 bar" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
-                        </div>
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Resistência Ômica (Equilíbrio Bobinas)</label>
+                        <input name="ohmic_resistance" required placeholder="Ex: 1.2 / 1.2 / 1.2 Ω" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Temperatura Unidade (°C)</label>
-                        <input name="unit_temperature" required placeholder="Normal: 75°C - 95°C" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Corrente de Operação (R, S, T)</label>
+                        <input name="operating_current" required placeholder="Ex: 10.2 / 10.1 / 10.3 A" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Dreno Condensado</label>
-                        <select name="condensate_drain_oil" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50">
-                          <option>Apenas Água (OK)</option>
-                          <option>Presença de Óleo (Alerta)</option>
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Caixa de Ligação (Umidade/Terminais)</label>
+                        <select name="junction_box_status" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50">
+                          <option>Seco / Terminais OK</option>
+                          <option>Umidade / Oxidação</option>
                         </select>
+                      </div>
+                      {/* Mantendo campos de bomba se for motor de bomba */}
+                      <div className="grid grid-cols-2 gap-4 pt-2 border-t border-zinc-800/30">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Selo/Cabo (Infiltração)</label>
+                          <select name="cable_seal_leak" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50">
+                            <option>OK</option>
+                            <option>Infiltração</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Sensores (Pressão/Nível)</label>
+                          <select name="sensors_test" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50">
+                            <option>Testado OK</option>
+                            <option>Falha / Descalibrado</option>
+                          </select>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -1752,18 +1759,50 @@ export default function App() {
                   {selectedAsset.type === 'Quadro' && (
                     <div className="grid grid-cols-1 gap-4">
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Equilíbrio de Fases (V)</label>
-                        <input name="phase_unbalance" required placeholder="Ex: 382V / 380V / 381V" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Termografia (Barramentos/Disjuntores)</label>
+                        <select name="thermography_scan" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50">
+                          <option>Sem Pontos Quentes</option>
+                          <option>Ponto Quente Detectado</option>
+                        </select>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Disjuntores (Mecânico)</label>
+                          <select name="breaker_test" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50">
+                            <option>Disparo OK</option>
+                            <option>Travado / Falha</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Botão Teste DR</label>
+                          <select name="dr_test" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50">
+                            <option>Atuou OK</option>
+                            <option>Não Atuou</option>
+                            <option>N/A</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Status DPS</label>
+                          <select name="dps_status" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50">
+                            <option>Verde (OK)</option>
+                            <option>Vermelho (Trocar)</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Contatores (Visual)</label>
+                          <select name="contactor_visual" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50">
+                            <option>Limpo / OK</option>
+                            <option>Carbonizado</option>
+                          </select>
+                        </div>
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Temperatura Bornes (°C)</label>
-                        <input name="terminal_temperature" required placeholder="Termografia ou toque seguro" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Status dos DPS</label>
-                        <select name="dps_status" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50">
-                          <option>Verde (OK)</option>
-                          <option>Vermelho (Substituir)</option>
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Limpeza (Poeira Condutiva)</label>
+                        <select name="panel_cleaning" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50">
+                          <option>Limpo / Aspirado</option>
+                          <option>Necessita Limpeza</option>
                         </select>
                       </div>
                     </div>
