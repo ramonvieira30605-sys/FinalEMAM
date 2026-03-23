@@ -1,0 +1,5 @@
+{
+  "name": "Emam - Gestão de Manutenção Elétrica",
+  "description": "Aplicativo profissional para gestão de manutenção elétrica da Usina de Asfalto EMAM, focado em ativos WEG com diagnóstico por IA e sincronização em nuvem.",
+  "requestFramePermissions": []
+}

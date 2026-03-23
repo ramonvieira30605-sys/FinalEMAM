@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+@theme {
+  --color-emerald-500: #10b981;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-black text-white antialiased selection:bg-emerald-500/30;
+    font-family: var(--font-sans);
+  }
+}
+
+.dark-card {
+  @apply bg-zinc-900/50 border border-zinc-800 rounded-2xl p-4 backdrop-blur-sm;
+}
+
+.emerald-glow {
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.2);
+}
+
+.bottom-nav-blur {
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(12px);
+}
