@@ -86,6 +86,7 @@ export default function App() {
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [kbSearchTerm, setKbSearchTerm] = useState('');
   const [docSearchTerm, setDocSearchTerm] = useState('');
+  const [syncNext, setSyncNext] = useState(false);
   
   // New states for Reports
   const [reportTechnician, setReportTechnician] = useState('');
@@ -253,38 +254,17 @@ export default function App() {
     loadInitialData();
   }, []);
 
-  // Auto-sync to LocalStorage and Cloud (Debounced)
+  // Auto-sync to LocalStorage only
   useEffect(() => {
     localStorage.setItem('emam_assets', JSON.stringify(assets));
-    
-    const timer = setTimeout(() => {
-      if (!isLoadingData && assets.length > 0) {
-        silentSync();
-      }
-    }, 3000);
-    return () => clearTimeout(timer);
   }, [assets]);
 
   useEffect(() => {
     localStorage.setItem('emam_checklists', JSON.stringify(checklists));
-    
-    const timer = setTimeout(() => {
-      if (!isLoadingData && checklists.length > 0) {
-        silentSync();
-      }
-    }, 3000);
-    return () => clearTimeout(timer);
   }, [checklists]);
 
   useEffect(() => {
     localStorage.setItem('emam_knowledge', JSON.stringify(knowledgeBase));
-    
-    const timer = setTimeout(() => {
-      if (!isLoadingData && knowledgeBase.length > 0) {
-        silentSync();
-      }
-    }, 3000);
-    return () => clearTimeout(timer);
   }, [knowledgeBase]);
 
   const silentSync = async () => {
@@ -386,6 +366,10 @@ export default function App() {
 
     setChecklists(prev => [newChecklist, ...prev]);
     setIsChecklistModalOpen(false);
+
+    if (syncNext) {
+      setTimeout(() => syncWithCloud(), 500);
+    }
   };
 
   const generatePDF = (checklist: Checklist, asset: Asset) => {
@@ -598,6 +582,10 @@ export default function App() {
     };
     setAssets(prev => [newAsset, ...prev]);
     setIsModalOpen(false);
+    
+    if (syncNext) {
+      setTimeout(() => syncWithCloud(), 500);
+    }
   };
 
   const handleDeleteAsset = (id: string) => {
@@ -856,20 +844,22 @@ export default function App() {
           </div>
         </div>
         <h2 className="text-xl font-bold text-white mb-2">EMAM Cloud Sync</h2>
-        <p className="text-zinc-500 text-sm mb-8">Sincronizando seus ativos e manuais...</p>
+        <p className="text-zinc-500 text-sm mb-8">Escolha como deseja iniciar o aplicativo.</p>
         
         <div className="space-y-4 w-full">
           <button 
             onClick={() => window.location.reload()}
-            className="w-full py-3 bg-zinc-900 border border-zinc-800 text-white rounded-xl text-sm font-bold"
+            className="w-full py-4 bg-emerald-500 text-black rounded-2xl text-sm font-bold flex items-center justify-center gap-2 active:scale-95 transition-all"
           >
-            RECARREGAR PÁGINA
+            <RefreshCw size={18} />
+            SINCRONIZAR COM NUVEM
           </button>
           <button 
             onClick={() => setIsLoadingData(false)}
-            className="w-full py-3 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-xl text-xs font-bold"
+            className="w-full py-4 bg-zinc-900 border border-zinc-800 text-white rounded-2xl text-sm font-bold flex items-center justify-center gap-2 active:scale-95 transition-all"
           >
-            CONTINUAR SEM NUVEM (MODO LOCAL)
+            <Cloud size={18} className="text-zinc-500" />
+            MODO OFFLINE (LOCAL)
           </button>
         </div>
       </div>
@@ -912,6 +902,25 @@ export default function App() {
                   <p className="text-zinc-500 text-xs font-medium">Operacionais</p>
                   <h3 className="text-3xl font-bold mt-1 text-emerald-500">{stats.operational}</h3>
                 </div>
+              </div>
+
+              <div className="dark-card bg-emerald-500/5 border-emerald-500/20 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-lg ${isSyncing ? 'bg-emerald-500/20' : 'bg-zinc-800'}`}>
+                    <Cloud className={isSyncing ? 'text-emerald-500 animate-pulse' : 'text-zinc-500'} size={20} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-white">Sincronização Cloud</p>
+                    <p className="text-[10px] text-zinc-500 uppercase tracking-widest">{isSyncing ? 'Sincronizando...' : 'Manual'}</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={syncWithCloud}
+                  disabled={isSyncing}
+                  className="px-4 py-2 bg-emerald-500 text-black text-[10px] font-black rounded-xl active:scale-95 transition-all disabled:opacity-50"
+                >
+                  {isSyncing ? '...' : 'SINCRONIZAR'}
+                </button>
               </div>
 
               <button 
@@ -1598,7 +1607,22 @@ export default function App() {
                   <label className="text-[10px] font-bold text-zinc-500 uppercase">Localização</label>
                   <input name="location" placeholder="Ex: Setor de Britagem" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
                 </div>
-                <button type="submit" className="w-full py-4 bg-emerald-500 text-black font-bold rounded-2xl active:scale-95 transition-all">SALVAR ATIVO</button>
+                <div className="grid grid-cols-2 gap-3">
+                  <button 
+                    type="submit" 
+                    onClick={() => setSyncNext(false)}
+                    className="py-4 bg-zinc-800 text-white font-bold rounded-2xl active:scale-95 transition-all text-xs"
+                  >
+                    SALVAR OFFLINE
+                  </button>
+                  <button 
+                    type="submit" 
+                    onClick={() => setSyncNext(true)}
+                    className="py-4 bg-emerald-500 text-black font-bold rounded-2xl active:scale-95 transition-all text-xs"
+                  >
+                    SALVAR ONLINE
+                  </button>
+                </div>
               </form>
             </motion.div>
           </motion.div>
@@ -1747,7 +1771,22 @@ export default function App() {
                   <textarea name="observations" rows={3} placeholder="Alguma anomalia ou ruído estranho?" className="w-full bg-black border border-zinc-800 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-emerald-500/50 resize-none" />
                 </div>
 
-                <button type="submit" className="w-full py-4 bg-emerald-500 text-black font-bold rounded-2xl active:scale-95 transition-all">FINALIZAR CHECKLIST</button>
+                <div className="grid grid-cols-2 gap-3">
+                  <button 
+                    type="submit" 
+                    onClick={() => setSyncNext(false)}
+                    className="py-4 bg-zinc-800 text-white font-bold rounded-2xl active:scale-95 transition-all text-xs"
+                  >
+                    SALVAR OFFLINE
+                  </button>
+                  <button 
+                    type="submit" 
+                    onClick={() => setSyncNext(true)}
+                    className="py-4 bg-emerald-500 text-black font-bold rounded-2xl active:scale-95 transition-all text-xs"
+                  >
+                    SALVAR ONLINE
+                  </button>
+                </div>
               </form>
             </motion.div>
           </motion.div>
