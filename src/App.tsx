@@ -138,6 +138,7 @@ export default function App() {
       // Anonymous Login and Cloud Fetch
       const initAuthAndFetch = async () => {
         if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+          console.warn('Supabase credentials missing. App running in Local-Only mode.');
           clearTimeout(timeoutId);
           setIsLoadingData(false);
           return;
@@ -235,6 +236,7 @@ export default function App() {
                 id: doc.id,
                 name: doc.name,
                 content: doc.content,
+                fileData: doc.file_data,
                 uploadDate: doc.upload_date
               }));
               setKnowledgeBase(mappedKB);
@@ -596,8 +598,8 @@ export default function App() {
   };
 
   const syncWithCloud = async () => {
-    if (import.meta.env.VITE_SUPABASE_URL === undefined || import.meta.env.VITE_SUPABASE_ANON_KEY === undefined) {
-      alert('Configuração do Supabase ausente. Por favor, adicione VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY nos Secrets.');
+    if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+      alert('ERRO DE CONFIGURAÇÃO: As chaves do Supabase não foram encontradas nas variáveis de ambiente.\n\nSe você está no Vercel, adicione VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY nas configurações do projeto.');
       return;
     }
 
@@ -663,6 +665,7 @@ export default function App() {
             id: doc.id,
             name: doc.name,
             content: doc.content,
+            file_data: doc.fileData,
             upload_date: doc.uploadDate,
             user_id: userId
           })));

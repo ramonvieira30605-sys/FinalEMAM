@@ -86,6 +86,7 @@ CREATE TABLE IF NOT EXISTS public.knowledge_base (
     id UUID PRIMARY KEY,
     name TEXT NOT NULL,
     content TEXT NOT NULL,
+    file_data TEXT,
     upload_date TIMESTAMPTZ DEFAULT NOW(),
     user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ DEFAULT NOW()
