@@ -66,5 +66,6 @@ export interface KnowledgeBaseDoc {
   id: string;
   name: string;
   content: string;
+  fileData?: string;
   uploadDate: string;
 }

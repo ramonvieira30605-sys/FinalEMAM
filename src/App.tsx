@@ -81,13 +81,37 @@ export default function App() {
   const [isChecklistModalOpen, setIsChecklistModalOpen] = useState(false);
   const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBaseDoc[]>([]);
   const [selectedDoc, setSelectedDoc] = useState<KnowledgeBaseDoc | null>(null);
+  const [viewMode, setViewMode] = useState<'original' | 'text'>('original');
   const [isUploading, setIsUploading] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
+  const [kbSearchTerm, setKbSearchTerm] = useState('');
+  const [docSearchTerm, setDocSearchTerm] = useState('');
   
   // New states for Reports
   const [reportTechnician, setReportTechnician] = useState('');
   const [reportType, setReportType] = useState<'ativos' | 'auditoria' | 'checklist_geral' | 'comparativo_semanal'>('ativos');
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+
+  const filteredKB = useMemo(() => {
+    return knowledgeBase.filter(doc => 
+      doc.name.toLowerCase().includes(kbSearchTerm.toLowerCase()) ||
+      doc.content.toLowerCase().includes(kbSearchTerm.toLowerCase())
+    );
+  }, [knowledgeBase, kbSearchTerm]);
+
+  const highlightText = (text: string, search: string) => {
+    if (!search.trim()) return text;
+    const parts = text.split(new RegExp(`(${search})`, 'gi'));
+    return (
+      <>
+        {parts.map((part, i) => 
+          part.toLowerCase() === search.toLowerCase() ? (
+            <mark key={i} className="bg-emerald-500 text-black rounded-sm px-0.5">{part}</mark>
+          ) : part
+        )}
+      </>
+    );
+  };
 
   // Load from LocalStorage (initial) and then Supabase
   useEffect(() => {
@@ -485,6 +509,15 @@ export default function App() {
     doc.save(`checklist-${asset.name.replace(/\s+/g, '-').toLowerCase()}-${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
+  const readFileAsDataURL = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
   const extractTextFromPDF = async (file: File): Promise<string> => {
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -507,11 +540,15 @@ export default function App() {
       const fileList = Array.from(files) as File[];
       for (const file of fileList) {
         if (file.type !== 'application/pdf') continue;
-        const content = await extractTextFromPDF(file);
+        const [content, fileData] = await Promise.all([
+          extractTextFromPDF(file),
+          readFileAsDataURL(file)
+        ]);
         const newDoc: KnowledgeBaseDoc = {
           id: crypto.randomUUID(),
           name: file.name,
           content: content,
+          fileData: fileData,
           uploadDate: new Date().toISOString(),
         };
         setKnowledgeBase(prev => [newDoc, ...prev]);
@@ -1188,44 +1225,61 @@ export default function App() {
                 </label>
               </div>
 
-              <div className="space-y-3">
-                <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Documentos Carregados ({knowledgeBase.length})</h4>
-                {knowledgeBase.map(doc => (
-                  <div key={doc.id} className="dark-card flex items-center justify-between group">
-                    <div 
-                      className="flex items-center gap-3 flex-1 cursor-pointer"
-                      onClick={() => setSelectedDoc(doc)}
-                    >
-                      <FileText className="text-emerald-500" size={18} />
-                      <div>
-                        <p className="font-semibold text-sm truncate max-w-[180px]">{doc.name}</p>
-                        <p className="text-[10px] text-zinc-500">{new Date(doc.uploadDate).toLocaleDateString()}</p>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Documentos ({filteredKB.length})</h4>
+                  <div className="relative w-48">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" size={14} />
+                    <input 
+                      type="text" 
+                      placeholder="Buscar na base..." 
+                      value={kbSearchTerm}
+                      onChange={(e) => setKbSearchTerm(e.target.value)}
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-full py-1.5 pl-9 pr-4 text-xs focus:outline-none focus:border-emerald-500/50"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {filteredKB.map(doc => (
+                    <div key={doc.id} className="dark-card flex items-center justify-between group">
+                      <div 
+                        className="flex items-center gap-3 flex-1 cursor-pointer"
+                        onClick={() => setSelectedDoc(doc)}
+                      >
+                        <FileText className="text-emerald-500" size={18} />
+                        <div>
+                          <p className="font-semibold text-sm truncate max-w-[180px]">{doc.name}</p>
+                          <p className="text-[10px] text-zinc-500">{new Date(doc.uploadDate).toLocaleDateString()}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => setSelectedDoc(doc)}
+                          className="p-2 text-zinc-400 hover:text-emerald-500 transition-colors"
+                          title="Visualizar"
+                        >
+                          <BookOpen size={16} />
+                        </button>
+                        <button 
+                          onClick={() => removeDoc(doc.id)}
+                          className="p-2 text-zinc-600 hover:text-red-500 transition-colors"
+                          title="Excluir"
+                        >
+                          <Trash2 size={16} />
+                        </button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button 
-                        onClick={() => setSelectedDoc(doc)}
-                        className="p-2 text-zinc-400 hover:text-emerald-500 transition-colors"
-                        title="Visualizar"
-                      >
-                        <BookOpen size={16} />
-                      </button>
-                      <button 
-                        onClick={() => removeDoc(doc.id)}
-                        className="p-2 text-zinc-600 hover:text-red-500 transition-colors"
-                        title="Excluir"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                  ))}
+                  {filteredKB.length === 0 && (
+                    <div className="text-center py-12 border border-zinc-900 rounded-3xl border-dashed">
+                      <BookOpen className="mx-auto text-zinc-800 mb-2" size={32} />
+                      <p className="text-zinc-600 text-sm italic">
+                        {kbSearchTerm ? 'Nenhum documento encontrado para esta busca.' : 'Nenhum documento carregado.'}
+                      </p>
                     </div>
-                  </div>
-                ))}
-                {knowledgeBase.length === 0 && (
-                  <div className="text-center py-12 border border-zinc-900 rounded-3xl border-dashed">
-                    <BookOpen className="mx-auto text-zinc-800 mb-2" size={32} />
-                    <p className="text-zinc-600 text-sm italic">Nenhum documento carregado.</p>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </motion.div>
           )}
@@ -1273,29 +1327,93 @@ export default function App() {
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/90 backdrop-blur-md z-[70] flex flex-col"
           >
-            <div className="p-6 flex justify-between items-center border-b border-zinc-800">
-              <div className="flex items-center gap-3">
-                <FileText className="text-emerald-500" />
-                <h3 className="font-bold text-white truncate max-w-[200px]">{selectedDoc.name}</h3>
+            <div className="p-4 md:p-6 flex flex-col md:flex-row justify-between items-center border-b border-zinc-800 gap-4 bg-zinc-900/50">
+              <div className="flex items-center gap-3 w-full md:w-auto">
+                <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center">
+                  <FileText className="text-emerald-500" size={20} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-bold text-white truncate max-w-[200px] md:max-w-md">{selectedDoc.name}</h3>
+                  <div className="flex items-center gap-2">
+                    <p className="text-[10px] text-zinc-500 uppercase tracking-widest">Visualização de Manual</p>
+                    <span className="text-[10px] text-zinc-700">•</span>
+                    <button 
+                      onClick={() => window.open(selectedDoc.fileData || '', '_blank')}
+                      className="text-[10px] text-emerald-500 hover:underline flex items-center gap-1"
+                    >
+                      <Download size={10} /> Abrir Externo
+                    </button>
+                  </div>
+                </div>
               </div>
-              <button 
-                onClick={() => setSelectedDoc(null)}
-                className="w-10 h-10 bg-zinc-800 rounded-full flex items-center justify-center text-white"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-6 bg-zinc-950">
-              <div className="max-w-2xl mx-auto">
-                <pre className="text-zinc-300 text-sm whitespace-pre-wrap font-sans leading-relaxed">
-                  {selectedDoc.content}
-                </pre>
+
+              <div className="flex items-center gap-3 w-full md:w-auto">
+                <div className="flex bg-black p-1 rounded-xl border border-zinc-800">
+                  <button 
+                    onClick={() => setViewMode('original')}
+                    className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all ${viewMode === 'original' ? 'bg-emerald-500 text-black' : 'text-zinc-500 hover:text-white'}`}
+                  >
+                    ORIGINAL
+                  </button>
+                  <button 
+                    onClick={() => setViewMode('text')}
+                    className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all ${viewMode === 'text' ? 'bg-emerald-500 text-black' : 'text-zinc-500 hover:text-white'}`}
+                  >
+                    TEXTO
+                  </button>
+                </div>
+
+                {viewMode === 'text' && (
+                  <div className="relative flex-1 md:w-64">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={16} />
+                    <input 
+                      type="text" 
+                      placeholder="Buscar no texto..." 
+                      value={docSearchTerm}
+                      onChange={(e) => setDocSearchTerm(e.target.value)}
+                      className="w-full bg-black border border-zinc-800 rounded-xl py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-emerald-500/50"
+                    />
+                  </div>
+                )}
+                <button 
+                  onClick={() => {
+                    setSelectedDoc(null);
+                    setDocSearchTerm('');
+                    setViewMode('original');
+                  }}
+                  className="w-10 h-10 bg-zinc-800 hover:bg-zinc-700 rounded-xl flex items-center justify-center text-white transition-colors"
+                >
+                  <X size={20} />
+                </button>
               </div>
             </div>
-            <div className="p-6 border-t border-zinc-800 bg-zinc-900 flex justify-center">
+            <div className="flex-1 overflow-hidden bg-zinc-950">
+              {viewMode === 'original' && selectedDoc.fileData ? (
+                <iframe 
+                  src={selectedDoc.fileData} 
+                  className="w-full h-full border-none"
+                  title={selectedDoc.name}
+                />
+              ) : (
+                <div className="h-full overflow-y-auto p-4 md:p-8 custom-scrollbar">
+                  <div className="max-w-3xl mx-auto bg-zinc-900/30 p-6 md:p-10 rounded-3xl border border-zinc-800/50 shadow-2xl">
+                    <div className="prose prose-invert max-w-none">
+                      <pre className="text-zinc-300 text-sm md:text-base whitespace-pre-wrap font-sans leading-relaxed tracking-wide">
+                        {highlightText(selectedDoc.content, docSearchTerm)}
+                      </pre>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="p-4 md:p-6 border-t border-zinc-800 bg-zinc-900 flex justify-center gap-4">
               <button 
-                onClick={() => setSelectedDoc(null)}
-                className="px-8 py-3 bg-emerald-500 text-black font-bold rounded-xl active:scale-95 transition-all"
+                onClick={() => {
+                  setSelectedDoc(null);
+                  setDocSearchTerm('');
+                  setViewMode('original');
+                }}
+                className="px-8 py-3 bg-emerald-500 hover:bg-emerald-600 text-black font-bold rounded-xl active:scale-95 transition-all shadow-lg shadow-emerald-500/20"
               >
                 FECHAR MANUAL
               </button>
