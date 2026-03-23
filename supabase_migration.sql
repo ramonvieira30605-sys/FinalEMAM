@@ -102,6 +102,9 @@ CREATE POLICY "Usuários podem ver seus próprios documentos" ON public.knowledg
 DROP POLICY IF EXISTS "Usuários podem inserir seus próprios documentos" ON public.knowledge_base;
 CREATE POLICY "Usuários podem inserir seus próprios documentos" ON public.knowledge_base FOR INSERT WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Usuários podem atualizar seus próprios documentos" ON public.knowledge_base;
+CREATE POLICY "Usuários podem atualizar seus próprios documentos" ON public.knowledge_base FOR UPDATE USING (auth.uid() = user_id);
+
 DROP POLICY IF EXISTS "Usuários podem excluir seus próprios documentos" ON public.knowledge_base;
 CREATE POLICY "Usuários podem excluir seus próprios documentos" ON public.knowledge_base FOR DELETE USING (auth.uid() = user_id);
 
