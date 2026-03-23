@@ -36,28 +36,27 @@ export interface Checklist {
   date: string;
   technician: string;
   items: {
-    // Acionamentos (Inversor/Soft-Starter)
-    p0003_current?: string; // Corrente de Saída (CFW500)
-    p0004_link_dc?: string; // Tensão Link DC (CFW500)
-    p006_status?: string;   // Status (SSW07)
-    starting_current_peak?: string; // Corrente de Partida (SSW07)
+    // Grandezas Elétricas de Entrada (QBT/Painel)
+    v_l1_l2?: string; // Tensão L1-L2 (V)
+    v_l2_l3?: string; // Tensão L2-L3 (V)
+    v_l3_l1?: string; // Tensão L3-L1 (V)
     
-    // Conjunto Motobomba / Motor
-    discharge_pressure?: string; // Pressão de Descarga
-    casing_temperature?: string; // Temperatura de Carcaça
-    gland_drip?: string;         // Gotejamento Gaxeta
-    mechanical_seal_leak?: string; // Selo Mecânico (Zero/Vazamento)
+    // Grandezas de Saída (Drive/Motor)
+    i_u?: string; // Corrente Fase U (A)
+    i_v?: string; // Corrente Fase V (A)
+    i_w?: string; // Corrente Fase W (A)
     
-    // Compressores
-    load_pressure?: string;   // Pressão de Carga
-    unload_pressure?: string; // Pressão de Alívio
-    unit_temperature?: string; // Temperatura Unidade
-    condensate_drain_oil?: string; // Dreno de Condensado (Água/Óleo)
+    // Saúde do Drive (Parâmetros de Monitoramento)
+    p0004_dc_link?: string; // Tensão Link DC (V)
+    p0007_heatsink_temp?: string; // Temperatura Dissipador (°C)
+    p0030_motor_temp?: string; // Temperatura Estimada Motor (°C)
     
-    // Quadros Elétricos
-    phase_unbalance?: string; // Equilíbrio de Fases (V)
-    terminal_temperature?: string; // Temperatura Bornes
-    dps_status?: string; // Estado dos DPS
+    // Integridade Física e Preditiva
+    insulation_resistance?: string; // Resistência de Isolamento (MΩ)
+    ground_continuity?: string; // Continuidade de Aterramento (Ω)
+    torque_status: 'OK' | 'Necessita Reaperto' | 'Crítico';
+    capacitor_status: 'Normal' | 'Estufado' | 'Vazamento';
+    fan_status: 'Operando' | 'Ruído' | 'Parado';
     
     observations: string;
   };
