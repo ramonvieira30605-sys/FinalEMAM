@@ -8,7 +8,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   LayoutDashboard, 
   Package, 
-  Cloud, 
   Plus, 
   Search, 
   QrCode, 
@@ -263,7 +262,7 @@ export default function App() {
       doc.setFontSize(8);
       doc.setTextColor(150);
       doc.text(
-        `Gerado por EMAM-WEG Cloud - ${new Date().toLocaleString('pt-BR')}`,
+        `Relatório Gerado por EMAM/ELT - GESTÃO WEG - ${new Date().toLocaleString('pt-BR')}`,
         105,
         285,
         { align: 'center' }
@@ -631,9 +630,6 @@ export default function App() {
         <div>
           <h1 className="text-2xl font-bold tracking-tighter text-white">EMAM<span className="text-emerald-500">/ELT</span></h1>
           <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold">Manutenção Elétrica</p>
-        </div>
-        <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
-          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
         </div>
       </header>
 
