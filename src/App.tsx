@@ -27,13 +27,30 @@ import {
   AlertTriangle,
   Database,
   Upload,
-  ShieldCheck
+  ShieldCheck,
+  Camera,
+  ChevronLeft
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as pdfjsLib from 'pdfjs-dist';
-import { Asset, AssetStatus, AssetType, Checklist, KnowledgeBaseDoc } from './types';
+import { Asset, AssetStatus, AssetType, Checklist, ChecklistItem, KnowledgeBaseDoc } from './types';
+
+// --- Constants ---
+
+const ALL_CHECKLIST_ITEMS_TEMPLATE = [
+  { id: '1.1', type: 'Quadro' as AssetType, label: 'Estado dos Barramentos e Disjuntores', description: 'Sem sinais de aquecimento/escurecimento.' },
+  { id: '1.2', type: 'Quadro' as AssetType, label: 'Vedação e Fechamento', description: 'Portas e borrachas de vedação íntegras.' },
+  { id: '2.1', type: 'Soft-Starter' as AssetType, label: 'Status do Display', description: 'Sem códigos de erro ativos.' },
+  { id: '2.2', type: 'Soft-Starter' as AssetType, label: 'Sistema de Arrefecimento', description: 'Cooler girando e grades limpas.' },
+  { id: '3.1', type: 'Inversor' as AssetType, label: 'Parâmetros de Operação', description: 'Hz e Amperagem estabilizados.' },
+  { id: '3.2', type: 'Inversor' as AssetType, label: 'Bornes de Potência', description: 'Cabos de saída bem fixados e sem ressecamento.' },
+  { id: '4.1', type: 'Bomba' as AssetType, label: 'Caixa de Ligação e Prensa-Cabos', description: 'Totalmente vedados e secos.' },
+  { id: '4.2', type: 'Bomba' as AssetType, label: 'Malha de Aterramento', description: 'Cabo terra fixado na carcaça e sem oxidação.' },
+  { id: '4.1', type: 'Motor' as AssetType, label: 'Caixa de Ligação e Prensa-Cabos', description: 'Totalmente vedados e secos.' },
+  { id: '4.2', type: 'Motor' as AssetType, label: 'Malha de Aterramento', description: 'Cabo terra fixado na carcaça e sem oxidação.' },
+];
 
 // Set PDF.js worker using a more robust method
 try {
@@ -89,6 +106,14 @@ export default function App() {
   const [reportTechnician, setReportTechnician] = useState('');
   const [reportType, setReportType] = useState<'ativos' | 'auditoria' | 'checklist_geral' | 'comparativo_semanal'>('ativos');
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+
+  // Checklist Wizard States
+  const [currentChecklistStep, setCurrentChecklistStep] = useState(0);
+  const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
+  const [technicianName, setTechnicianName] = useState('');
+  const [isChecklistStarted, setIsChecklistStarted] = useState(false);
+  const [tempPhoto, setTempPhoto] = useState<string | null>(null);
+  const [ncDescription, setNcDescription] = useState('');
 
   const filteredKB = useMemo(() => {
     return knowledgeBase.filter(doc => 
@@ -195,21 +220,10 @@ export default function App() {
       ['Técnico Responsável:', checklist.technician],
     ];
 
-    // Add specific parameters based on asset type
-    checklistData.push(['Tensão L1-L2:', checklist.items.v_l1_l2 || '-']);
-    checklistData.push(['Tensão L2-L3:', checklist.items.v_l2_l3 || '-']);
-    checklistData.push(['Tensão L3-L1:', checklist.items.v_l3_l1 || '-']);
-    checklistData.push(['Corrente Fase U:', checklist.items.i_u || '-']);
-    checklistData.push(['Corrente Fase V:', checklist.items.i_v || '-']);
-    checklistData.push(['Corrente Fase W:', checklist.items.i_w || '-']);
-    checklistData.push(['Link DC (P0004):', checklist.items.p0004_dc_link || '-']);
-    checklistData.push(['Temp. Dissipador (P0007):', checklist.items.p0007_heatsink_temp || '-']);
-    checklistData.push(['Resistência Isolamento:', checklist.items.insulation_resistance || '-']);
-    checklistData.push(['Aterramento:', checklist.items.ground_continuity || '-']);
-    checklistData.push(['Status Torque:', checklist.items.torque_status || '-']);
-    checklistData.push(['Status Capacitores:', checklist.items.capacitor_status || '-']);
-    checklistData.push(['Status Ventilação:', checklist.items.fan_status || '-']);
-    checklistData.push(['Observações:', checklist.items.observations || 'Nenhuma']);
+    // Add items from the new structure
+    checklist.items.forEach((item: ChecklistItem) => {
+      checklistData.push([item.label, `${item.status}${item.ncDescription ? ` - ${item.ncDescription}` : ''}`]);
+    });
 
     (doc as any).autoTable({
       startY: startYChecklist + 5,
@@ -428,34 +442,85 @@ export default function App() {
     }
   };
 
-  const handleAddChecklist = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const startChecklist = () => {
     if (!selectedAsset) return;
-
-    const formData = new FormData(e.currentTarget);
-    const technician = formData.get('technician') as string;
+    const items = ALL_CHECKLIST_ITEMS_TEMPLATE
+      .filter(item => item.type === selectedAsset.type)
+      .map(item => ({
+        ...item,
+        status: null as 'C' | 'NC' | null,
+        photo: null as string | null,
+        ncDescription: ''
+      }));
     
-    // Collect all fields from the form into the 'items' object
-    const items: any = {
-      observations: formData.get('observations') as string || ''
+    if (items.length === 0) {
+      setChecklistItems([{
+        id: 'gen-1',
+        label: 'Estado Geral do Ativo',
+        description: 'Verificação visual completa. ANEXAR FOTO.',
+        status: null,
+        photo: null
+      }]);
+    } else {
+      setChecklistItems(items);
+    }
+    
+    setCurrentChecklistStep(0);
+    setIsChecklistStarted(true);
+    setTempPhoto(null);
+    setNcDescription('');
+  };
+
+  const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setTempPhoto(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleChecklistStep = (status: 'C' | 'NC') => {
+    if (!tempPhoto) return; // Photo is mandatory
+
+    const updatedItems = [...checklistItems];
+    updatedItems[currentChecklistStep] = {
+      ...updatedItems[currentChecklistStep],
+      status,
+      photo: tempPhoto,
+      ncDescription: status === 'NC' ? ncDescription : ''
     };
+    setChecklistItems(updatedItems);
     
-    formData.forEach((value, key) => {
-      if (key !== 'technician' && key !== 'observations') {
-        items[key] = value;
-      }
-    });
+    if (currentChecklistStep < checklistItems.length - 1) {
+      setCurrentChecklistStep(prev => prev + 1);
+      setTempPhoto(null);
+      setNcDescription('');
+    } else {
+      finishChecklist(updatedItems);
+    }
+  };
 
+  const finishChecklist = (finalItems: ChecklistItem[]) => {
+    if (!selectedAsset) return;
+    
     const newChecklist: Checklist = {
       id: crypto.randomUUID(),
       assetId: selectedAsset.id,
       date: new Date().toISOString(),
-      technician,
-      items
+      technician: technicianName,
+      items: finalItems,
+      observations: ''
     };
 
     setChecklists(prev => [newChecklist, ...prev]);
     setIsChecklistModalOpen(false);
+    setIsChecklistStarted(false);
+    setTechnicianName('');
+    setTempPhoto(null);
+    setNcDescription('');
   };
 
   const exportPDF = (asset: Asset) => {
@@ -480,6 +545,51 @@ export default function App() {
       theme: 'grid',
       headStyles: { fillColor: [16, 185, 129] },
     });
+
+    // Add recent checklist if available
+    const lastChecklist = checklists.find(c => c.assetId === asset.id);
+    if (lastChecklist) {
+      doc.addPage();
+      doc.setFontSize(16);
+      doc.text('Último Checklist Diário', 14, 22);
+      doc.setFontSize(10);
+      doc.text(`Data: ${new Date(lastChecklist.date).toLocaleString()}`, 14, 30);
+      doc.text(`Técnico: ${lastChecklist.technician}`, 14, 35);
+
+      autoTable(doc, {
+        startY: 45,
+        head: [['Item', 'Status', 'Observação']],
+        body: lastChecklist.items.map(i => [
+          i.label,
+          i.status === 'C' ? 'CONFORME' : 'NÃO CONFORME',
+          i.ncDescription || '-'
+        ]),
+        theme: 'grid',
+        headStyles: { fillColor: [16, 185, 129] },
+      });
+      
+      let yPos = (doc as any).lastAutoTable.finalY + 20;
+      lastChecklist.items.forEach((item) => {
+        if (item.photo) {
+          if (yPos > 240) {
+            doc.addPage();
+            yPos = 20;
+          }
+          doc.setFontSize(8);
+          doc.text(`Foto Item ${item.id}: ${item.label}`, 14, yPos);
+          try {
+            // Check if it's a valid data URL
+            if (item.photo.startsWith('data:image')) {
+              doc.addImage(item.photo, 'JPEG', 14, yPos + 5, 60, 45);
+              yPos += 60;
+            }
+          } catch (e) {
+            console.error('Error adding image to PDF', e);
+            yPos += 10;
+          }
+        }
+      });
+    }
 
     doc.save(`EMAM_Relatorio_${asset.serialNumber}.pdf`);
   };
@@ -520,27 +630,17 @@ export default function App() {
     } else if (reportType === 'checklist_geral') {
       autoTable(doc, {
         startY: 65,
-        head: [['Data', 'Ativo', 'Técnico', 'Observações / Medições']],
+        head: [['Data', 'Ativo', 'Técnico', 'Status dos Itens']],
         body: checklists.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(c => {
           const asset = assets.find(a => a.id === c.assetId);
-          // Create a summary of measurements
-          const items = c.items;
-          let summary = items.observations || '';
-          const measurements = [];
-          if (items.v_l1_l2) measurements.push(`V: ${items.v_l1_l2}/${items.v_l2_l3}/${items.v_l3_l1}V`);
-          if (items.i_u) measurements.push(`I: ${items.i_u}/${items.i_v}/${items.i_w}A`);
-          if (items.p0004_dc_link) measurements.push(`LinkDC: ${items.p0004_dc_link}V`);
-          if (items.p0007_heatsink_temp) measurements.push(`Temp: ${items.p0007_heatsink_temp}°C`);
-          
-          if (measurements.length > 0) {
-            summary = `${measurements.join(' | ')}. ${summary}`;
-          }
+          const items = c.items as ChecklistItem[];
+          const statusSummary = items.map(i => `${i.id}: ${i.status}${i.status === 'NC' ? ' (!)' : ''}`).join(' | ');
           
           return [
             new Date(c.date).toLocaleDateString('pt-BR'),
             asset?.name || 'N/A',
             c.technician,
-            summary
+            statusSummary
           ];
         }),
         theme: 'grid',
@@ -564,19 +664,11 @@ export default function App() {
         const old = oldChecklists.filter(c => c.assetId === asset.id);
         
         const recentAlerts = recent.filter(c => {
-          const asset = assets.find(a => a.id === c.assetId);
-          if (asset?.type === 'Motor') return c.items.mechanical_seal_leak === 'Com Vazamento' || c.items.gland_drip === 'Excessivo';
-          if (asset?.type === 'Quadro') return c.items.dps_status === 'Vermelho (Substituir)';
-          if (asset?.type === 'Compressor') return c.items.condensate_drain_oil === 'Presença de Óleo (Alerta)';
-          return false;
+          return c.items.some(i => i.status === 'NC');
         }).length;
 
         const oldAlerts = old.filter(c => {
-          const asset = assets.find(a => a.id === c.assetId);
-          if (asset?.type === 'Motor') return c.items.mechanical_seal_leak === 'Com Vazamento' || c.items.gland_drip === 'Excessivo';
-          if (asset?.type === 'Quadro') return c.items.dps_status === 'Vermelho (Substituir)';
-          if (asset?.type === 'Compressor') return c.items.condensate_drain_oil === 'Presença de Óleo (Alerta)';
-          return false;
+          return c.items.some(i => i.status === 'NC');
         }).length;
 
         let trend = 'Estável';
@@ -829,6 +921,36 @@ export default function App() {
                   )}
                   GERAR RELATÓRIO PDF
                 </button>
+
+                {reportType === 'checklist_geral' && checklists.length > 0 && (
+                  <div className="space-y-4 pt-6 border-t border-zinc-800/50">
+                    <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Checklists Recentes</h3>
+                    <div className="space-y-2">
+                      {checklists.slice(0, 10).map(c => {
+                        const asset = assets.find(a => a.id === c.assetId);
+                        const hasNC = c.items.some(i => i.status === 'NC');
+                        return (
+                          <div key={c.id} className="p-4 bg-black/40 border border-zinc-800 rounded-xl flex justify-between items-center">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-white">{asset?.name || 'Ativo Removido'}</span>
+                                {hasNC && <span className="px-2 py-0.5 bg-red-500/10 text-red-500 text-[8px] font-bold rounded-full border border-red-500/20">NC DETECTADO</span>}
+                              </div>
+                              <p className="text-[10px] text-zinc-500">{new Date(c.date).toLocaleDateString('pt-BR')} às {new Date(c.date).toLocaleTimeString('pt-BR')} - {c.technician}</p>
+                            </div>
+                            <button 
+                              onClick={() => asset && exportPDF(asset)}
+                              className="p-2 text-emerald-500 hover:bg-emerald-500/10 rounded-lg transition-colors"
+                              title="Baixar Relatório Individual"
+                            >
+                              <Download size={16} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-2xl space-y-3">
@@ -1242,11 +1364,12 @@ export default function App() {
                       onChange={(e) => setSelectedType(e.target.value as AssetType)}
                       className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50"
                     >
-                      <option value="Motor">Motor / Bomba</option>
+                      <option value="Motor">Motor</option>
                       <option value="Inversor">Inversor (CFW500)</option>
                       <option value="Soft-Starter">Soft-Starter (SSW07)</option>
+                      <option value="Quadro">Quadro Elétrico (QGBT)</option>
+                      <option value="Bomba">Motobomba</option>
                       <option value="Compressor">Compressor Parafuso</option>
-                      <option value="Quadro">Quadro Elétrico</option>
                       <option value="Outro">Outro</option>
                     </select>
                   </div>
@@ -1397,187 +1520,166 @@ export default function App() {
               initial={{ scale: 0.9, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 20 }}
-              className="bg-zinc-900 border border-zinc-800 w-full rounded-3xl p-6 space-y-4 max-h-[90vh] overflow-y-auto custom-scrollbar"
+              className="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-3xl p-6 space-y-6 max-h-[90vh] overflow-y-auto custom-scrollbar"
             >
               <div className="flex justify-between items-center">
                 <div>
-                  <h3 className="text-xl font-bold">Checklist Técnico</h3>
-                  <p className="text-xs text-emerald-500 font-bold uppercase">{selectedAsset.name}</p>
+                  <h3 className="text-xl font-bold">Checklist Diário</h3>
+                  <p className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest">{selectedAsset.name}</p>
                 </div>
-                <button onClick={() => setIsChecklistModalOpen(false)} className="text-zinc-500 hover:text-white"><X size={24} /></button>
+                <button 
+                  onClick={() => {
+                    setIsChecklistModalOpen(false);
+                    setIsChecklistStarted(false);
+                  }} 
+                  className="text-zinc-500 hover:text-white"
+                >
+                  <X size={24} />
+                </button>
               </div>
 
-              <form onSubmit={handleAddChecklist} className="space-y-6">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Técnico Responsável</label>
-                  <input name="technician" required placeholder="Nome do técnico" className="w-full bg-black border border-zinc-800 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
-                </div>
-
-                {/* Dynamic Fields based on Type */}
-                <div className="space-y-4 pt-4 border-t border-zinc-800/50">
-                  <h4 className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Medições Físicas / Parâmetros</h4>
-                  
-                  {(selectedAsset.type === 'Inversor' || selectedAsset.type === 'Soft-Starter') && (
-                    <div className="space-y-4">
-                      {/* Seção Técnica: Grandezas de Entrada */}
-                      <div className="space-y-3 pt-2">
-                        <h4 className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest flex items-center gap-2">
-                          <Zap size={12} /> Entrada (QBT / Painel)
-                        </h4>
-                        <div className="grid grid-cols-3 gap-2">
-                          <div className="space-y-1">
-                            <label className="text-[9px] font-bold text-zinc-500 uppercase">V L1-L2</label>
-                            <input name="v_l1_l2" type="number" step="0.1" placeholder="V" className="w-full bg-black border border-zinc-800 rounded-lg py-2 px-2 text-xs focus:outline-none focus:border-emerald-500/50" />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[9px] font-bold text-zinc-500 uppercase">V L2-L3</label>
-                            <input name="v_l2_l3" type="number" step="0.1" placeholder="V" className="w-full bg-black border border-zinc-800 rounded-lg py-2 px-2 text-xs focus:outline-none focus:border-emerald-500/50" />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[9px] font-bold text-zinc-500 uppercase">V L3-L1</label>
-                            <input name="v_l3_l1" type="number" step="0.1" placeholder="V" className="w-full bg-black border border-zinc-800 rounded-lg py-2 px-2 text-xs focus:outline-none focus:border-emerald-500/50" />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Seção Técnica: Grandezas de Saída */}
-                      <div className="space-y-3 pt-2">
-                        <h4 className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest flex items-center gap-2">
-                          <Activity size={12} /> Saída (Drive / Motor)
-                        </h4>
-                        <div className="grid grid-cols-3 gap-2">
-                          <div className="space-y-1">
-                            <label className="text-[9px] font-bold text-zinc-500 uppercase">I Fase U</label>
-                            <input name="i_u" type="number" step="0.01" placeholder="A" className="w-full bg-black border border-zinc-800 rounded-lg py-2 px-2 text-xs focus:outline-none focus:border-emerald-500/50" />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[9px] font-bold text-zinc-500 uppercase">I Fase V</label>
-                            <input name="i_v" type="number" step="0.01" placeholder="A" className="w-full bg-black border border-zinc-800 rounded-lg py-2 px-2 text-xs focus:outline-none focus:border-emerald-500/50" />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[9px] font-bold text-zinc-500 uppercase">I Fase W</label>
-                            <input name="i_w" type="number" step="0.01" placeholder="A" className="w-full bg-black border border-zinc-800 rounded-lg py-2 px-2 text-xs focus:outline-none focus:border-emerald-500/50" />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Saúde do Drive */}
-                      <div className="space-y-3 pt-2">
-                        <h4 className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest flex items-center gap-2">
-                          <ShieldCheck size={12} /> Saúde do Sistema
-                        </h4>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="space-y-1">
-                            <label className="text-[9px] font-bold text-zinc-500 uppercase">Link DC (P0004)</label>
-                            <input name="p0004_dc_link" type="number" placeholder="V" className="w-full bg-black border border-zinc-800 rounded-lg py-2 px-3 text-xs focus:outline-none focus:border-emerald-500/50" />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[9px] font-bold text-zinc-500 uppercase">Temp. Dissip. (P0007)</label>
-                            <input name="p0007_heatsink_temp" type="number" placeholder="°C" className="w-full bg-black border border-zinc-800 rounded-lg py-2 px-3 text-xs focus:outline-none focus:border-emerald-500/50" />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="space-y-1">
-                            <label className="text-[9px] font-bold text-zinc-500 uppercase">Isolamento (MΩ)</label>
-                            <input name="insulation_resistance" type="number" placeholder="Ex: 500" className="w-full bg-black border border-zinc-800 rounded-lg py-2 px-3 text-xs focus:outline-none focus:border-emerald-500/50" />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[9px] font-bold text-zinc-500 uppercase">Aterramento (Ω)</label>
-                            <input name="ground_continuity" type="number" step="0.01" placeholder="Ex: 0.1" className="w-full bg-black border border-zinc-800 rounded-lg py-2 px-3 text-xs focus:outline-none focus:border-emerald-500/50" />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Status de Componentes */}
-                      <div className="grid grid-cols-1 gap-3 pt-2">
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Estado das Conexões (Torque)</label>
-                          <select name="torque_status" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50">
-                            <option value="OK">OK (Conforme Tabela de Torque)</option>
-                            <option value="Necessita Reaperto">Necessita Reaperto (Termografia)</option>
-                            <option value="Crítico">Crítico (Sinais de Aquecimento)</option>
-                          </select>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-zinc-500 uppercase">Capacitores</label>
-                            <select name="capacitor_status" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50">
-                              <option value="Normal">Normal</option>
-                              <option value="Estufado">Estufado</option>
-                              <option value="Vazamento">Vazamento</option>
-                            </select>
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-zinc-500 uppercase">Ventilação</label>
-                            <select name="fan_status" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50">
-                              <option value="Operando">Operando OK</option>
-                              <option value="Ruído">Ruído Anormal</option>
-                              <option value="Parado">Parado / Falha</option>
-                            </select>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Disjuntores (Mecânico)</label>
-                          <select name="breaker_test" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50">
-                            <option>Disparo OK</option>
-                            <option>Travado / Falha</option>
-                          </select>
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Botão Teste DR</label>
-                          <select name="dr_test" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50">
-                            <option>Atuou OK</option>
-                            <option>Não Atuou</option>
-                            <option>N/A</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Status DPS</label>
-                          <select name="dps_status" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50">
-                            <option>Verde (OK)</option>
-                            <option>Vermelho (Trocar)</option>
-                          </select>
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Contatores (Visual)</label>
-                          <select name="contactor_visual" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50">
-                            <option>Limpo / OK</option>
-                            <option>Carbonizado</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Limpeza (Poeira Condutiva)</label>
-                        <select name="panel_cleaning" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50">
-                          <option>Limpo / Aspirado</option>
-                          <option>Necessita Limpeza</option>
-                        </select>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Observações Adicionais</label>
-                  <textarea name="observations" rows={3} placeholder="Alguma anomalia ou ruído estranho?" className="w-full bg-black border border-zinc-800 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-emerald-500/50 resize-none" />
-                </div>
-
-                <div className="grid grid-cols-1 gap-3">
+              {!isChecklistStarted ? (
+                <div className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Técnico Responsável</label>
+                    <input 
+                      value={technicianName}
+                      onChange={(e) => setTechnicianName(e.target.value)}
+                      placeholder="Seu nome completo" 
+                      className="w-full bg-black border border-zinc-800 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-emerald-500/50" 
+                    />
+                  </div>
                   <button 
-                    type="submit" 
-                    className="py-4 bg-emerald-500 text-black font-bold rounded-2xl active:scale-95 transition-all text-sm"
+                    disabled={!technicianName}
+                    onClick={startChecklist}
+                    className="w-full py-4 bg-emerald-500 text-black font-bold rounded-2xl active:scale-95 transition-all text-sm disabled:opacity-50 disabled:active:scale-100"
                   >
-                    SALVAR CHECKLIST
+                    INICIAR COLETA DE DADOS
                   </button>
                 </div>
-              </form>
+              ) : (
+                <div className="space-y-6">
+                  {/* Progress Bar & Back Button */}
+                  <div className="flex items-center gap-3">
+                    {currentChecklistStep > 0 && (
+                      <button 
+                        onClick={() => {
+                          setCurrentChecklistStep(prev => prev - 1);
+                          setTempPhoto(checklistItems[currentChecklistStep - 1].photo);
+                          setNcDescription(checklistItems[currentChecklistStep - 1].ncDescription || '');
+                        }}
+                        className="p-2 bg-zinc-800 text-zinc-400 rounded-xl hover:text-white transition-colors"
+                      >
+                        <ChevronLeft size={20} />
+                      </button>
+                    )}
+                    <div className="flex-1 flex gap-1 h-1">
+                      {checklistItems.map((_, idx) => (
+                        <div 
+                          key={idx} 
+                          className={`flex-1 rounded-full transition-all ${idx <= currentChecklistStep ? 'bg-emerald-500' : 'bg-zinc-800'}`} 
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Item {checklistItems[currentChecklistStep].id}</span>
+                      <h4 className="text-lg font-bold leading-tight">{checklistItems[currentChecklistStep].label}</h4>
+                      <p className="text-xs text-zinc-400">{checklistItems[currentChecklistStep].description}</p>
+                    </div>
+
+                    {/* Photo Upload Area */}
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Foto Obrigatória</label>
+                      <div className="relative aspect-video bg-black border-2 border-dashed border-zinc-800 rounded-2xl overflow-hidden flex flex-col items-center justify-center gap-2 group hover:border-emerald-500/30 transition-colors">
+                        {tempPhoto ? (
+                          <>
+                            <img src={tempPhoto} alt="Preview" className="w-full h-full object-cover" />
+                            <button 
+                              onClick={() => setTempPhoto(null)}
+                              className="absolute top-2 right-2 p-1 bg-black/50 rounded-full text-white hover:bg-red-500 transition-colors"
+                            >
+                              <X size={16} />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <input 
+                              type="file" 
+                              accept="image/*" 
+                              capture="environment" 
+                              onChange={handlePhotoCapture} 
+                              className="absolute inset-0 opacity-0 cursor-pointer z-10" 
+                            />
+                            <Camera size={32} className="text-zinc-600 group-hover:text-emerald-500 transition-colors" />
+                            <span className="text-[10px] font-bold text-zinc-500 uppercase">Toque para capturar foto</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* NC Description */}
+                    <AnimatePresence>
+                      {checklistItems[currentChecklistStep].status === 'NC' && (
+                        <motion.div 
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          className="space-y-2 overflow-hidden"
+                        >
+                          <label className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">Descrição do Problema (Obrigatório)</label>
+                          <textarea 
+                            value={ncDescription}
+                            onChange={(e) => setNcDescription(e.target.value)}
+                            placeholder="Descreva brevemente a anomalia encontrada..."
+                            className="w-full bg-black border border-zinc-800 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-amber-500/50 resize-none"
+                            rows={2}
+                          />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    {/* Actions */}
+                    <div className="grid grid-cols-2 gap-3 pt-4">
+                      <button 
+                        disabled={!tempPhoto}
+                        onClick={() => handleChecklistStep('C')}
+                        className={`py-4 font-bold rounded-2xl active:scale-95 transition-all text-sm flex items-center justify-center gap-2 disabled:opacity-50 ${checklistItems[currentChecklistStep].status === 'C' ? 'bg-emerald-500 text-black' : 'bg-zinc-800 text-emerald-500'}`}
+                      >
+                        <CheckCircle2 size={18} />
+                        CONFORME
+                      </button>
+                      <button 
+                        disabled={!tempPhoto}
+                        onClick={() => {
+                          if (checklistItems[currentChecklistStep].status === 'NC') {
+                            handleChecklistStep('NC');
+                          } else {
+                            const updated = [...checklistItems];
+                            updated[currentChecklistStep].status = 'NC';
+                            setChecklistItems(updated);
+                          }
+                        }}
+                        className={`py-4 font-bold rounded-2xl active:scale-95 transition-all text-sm flex items-center justify-center gap-2 disabled:opacity-50 ${checklistItems[currentChecklistStep].status === 'NC' ? 'bg-red-500 text-white' : 'bg-zinc-800 text-red-500'}`}
+                      >
+                        <AlertTriangle size={18} />
+                        NÃO CONF.
+                      </button>
+                    </div>
+                    {checklistItems[currentChecklistStep].status === 'NC' && (
+                      <button 
+                        disabled={!ncDescription}
+                        onClick={() => handleChecklistStep('NC')}
+                        className="w-full py-3 bg-emerald-500 text-black font-bold rounded-xl text-xs uppercase tracking-widest active:scale-95 transition-all"
+                      >
+                        Confirmar e Próximo
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </motion.div>
           </motion.div>
         )}

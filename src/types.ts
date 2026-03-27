@@ -1,5 +1,5 @@
 export type AssetStatus = 'Operacional' | 'Alerta' | 'Manutenção' | 'Crítico';
-export type AssetType = 'Motor' | 'Inversor' | 'Soft-Starter' | 'Quadro' | 'Compressor' | 'Outro';
+export type AssetType = 'Motor' | 'Inversor' | 'Soft-Starter' | 'Quadro' | 'Compressor' | 'Bomba' | 'Outro';
 
 export interface Asset {
   id: string;
@@ -30,36 +30,22 @@ export interface Asset {
   };
 }
 
+export interface ChecklistItem {
+  id: string;
+  label: string;
+  description: string;
+  status: 'C' | 'NC' | null;
+  photo: string | null;
+  ncDescription?: string;
+}
+
 export interface Checklist {
   id: string;
   assetId: string;
   date: string;
   technician: string;
-  items: {
-    // Grandezas Elétricas de Entrada (QBT/Painel)
-    v_l1_l2?: string; // Tensão L1-L2 (V)
-    v_l2_l3?: string; // Tensão L2-L3 (V)
-    v_l3_l1?: string; // Tensão L3-L1 (V)
-    
-    // Grandezas de Saída (Drive/Motor)
-    i_u?: string; // Corrente Fase U (A)
-    i_v?: string; // Corrente Fase V (A)
-    i_w?: string; // Corrente Fase W (A)
-    
-    // Saúde do Drive (Parâmetros de Monitoramento)
-    p0004_dc_link?: string; // Tensão Link DC (V)
-    p0007_heatsink_temp?: string; // Temperatura Dissipador (°C)
-    p0030_motor_temp?: string; // Temperatura Estimada Motor (°C)
-    
-    // Integridade Física e Preditiva
-    insulation_resistance?: string; // Resistência de Isolamento (MΩ)
-    ground_continuity?: string; // Continuidade de Aterramento (Ω)
-    torque_status: 'OK' | 'Necessita Reaperto' | 'Crítico';
-    capacitor_status: 'Normal' | 'Estufado' | 'Vazamento';
-    fan_status: 'Operando' | 'Ruído' | 'Parado';
-    
-    observations: string;
-  };
+  items: ChecklistItem[];
+  observations: string;
 }
 
 export interface KnowledgeBaseDoc {
