@@ -29,7 +29,8 @@ import {
   Upload,
   ShieldCheck,
   Camera,
-  ChevronLeft
+  ChevronLeft,
+  MinusCircle
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import jsPDF from 'jspdf';
@@ -220,23 +221,76 @@ export default function App() {
       ['Técnico Responsável:', checklist.technician],
     ];
 
-    // Add items from the new structure
-    checklist.items.forEach((item: ChecklistItem) => {
-      checklistData.push([item.label, `${item.status}${item.ncDescription ? ` - ${item.ncDescription}` : ''}`]);
-    });
+    const counts = checklist.items.reduce((acc, item) => {
+      if (item.status === 'C') acc.c++;
+      else if (item.status === 'NC') acc.nc++;
+      else if (item.status === 'NA') acc.na++;
+      return acc;
+    }, { c: 0, nc: 0, na: 0 });
+
+    doc.setFontSize(11);
+    doc.setTextColor(0, 0, 0);
+    doc.text('Resumo de Conformidade:', 14, startYChecklist + 10);
+    doc.setFontSize(9);
+    doc.text(`Conforme: ${counts.c} | Não Conforme: ${counts.nc} | N/A: ${counts.na}`, 14, startYChecklist + 15);
 
     (doc as any).autoTable({
-      startY: startYChecklist + 5,
+      startY: startYChecklist + 20,
       body: checklistData,
-      theme: 'striped',
-      headStyles: { fillColor: [16, 185, 129] },
-      styles: { fontSize: 10, cellPadding: 5 },
+      theme: 'plain',
+      styles: { fontSize: 10, cellPadding: 2 },
       columnStyles: { 0: { fontStyle: 'bold', width: 50 } }
+    });
+
+    const itemsData = checklist.items.map((item: ChecklistItem) => [
+      item.label,
+      item.status === 'C' ? 'CONFORME' : item.status === 'NC' ? '[!] NÃO CONFORME' : 'N/A',
+      item.ncDescription || '-'
+    ]);
+
+    (doc as any).autoTable({
+      startY: (doc as any).lastAutoTable.finalY + 10,
+      head: [['Item', 'Status', 'Observação']],
+      body: itemsData,
+      theme: 'grid',
+      headStyles: { fillColor: [16, 185, 129] },
+      styles: { fontSize: 9 },
+      didParseCell: (data) => {
+        if (data.row.section === 'body' && data.column.index === 1) {
+          const val = data.cell.raw as string;
+          if (val && val.includes('NÃO CONFORME')) {
+            data.cell.styles.textColor = [220, 38, 38];
+            data.cell.styles.fontStyle = 'bold';
+          }
+        }
+      }
+    });
+
+    // Photos
+    let yPos = (doc as any).lastAutoTable.finalY + 15;
+    checklist.items.forEach((item) => {
+      if (item.photo) {
+        if (yPos > 240) {
+          doc.addPage();
+          yPos = 20;
+        }
+        doc.setFontSize(8);
+        doc.text(`Foto Item: ${item.label}`, 14, yPos);
+        try {
+          if (item.photo.startsWith('data:image')) {
+            doc.addImage(item.photo, 'JPEG', 14, yPos + 5, 60, 45);
+            yPos += 60;
+          }
+        } catch (e) {
+          console.error('Error adding image to PDF', e);
+          yPos += 10;
+        }
+      }
     });
 
     // Technical Params (if any)
     if (asset.technicalParams) {
-      const startYParams = (doc as any).lastAutoTable.finalY + 15;
+      const startYParams = yPos + 10 > 240 ? (doc.addPage(), 20) : yPos + 10;
       doc.setFontSize(14);
       doc.text('PARÂMETROS TÉCNICOS CONFIGURADOS', 14, startYParams);
       
@@ -448,7 +502,7 @@ export default function App() {
       .filter(item => item.type === selectedAsset.type)
       .map(item => ({
         ...item,
-        status: null as 'C' | 'NC' | null,
+        status: null as 'C' | 'NC' | 'NA' | null,
         photo: null as string | null,
         ncDescription: ''
       }));
@@ -482,8 +536,8 @@ export default function App() {
     }
   };
 
-  const handleChecklistStep = (status: 'C' | 'NC') => {
-    if (!tempPhoto) return; // Photo is mandatory
+  const handleChecklistStep = (status: 'C' | 'NC' | 'NA') => {
+    if (status !== 'NA' && !tempPhoto) return; // Photo is mandatory for C and NC
 
     const updatedItems = [...checklistItems];
     updatedItems[currentChecklistStep] = {
@@ -556,16 +610,38 @@ export default function App() {
       doc.text(`Data: ${new Date(lastChecklist.date).toLocaleString()}`, 14, 30);
       doc.text(`Técnico: ${lastChecklist.technician}`, 14, 35);
 
+      const counts = lastChecklist.items.reduce((acc, item) => {
+        if (item.status === 'C') acc.c++;
+        else if (item.status === 'NC') acc.nc++;
+        else if (item.status === 'NA') acc.na++;
+        return acc;
+      }, { c: 0, nc: 0, na: 0 });
+
+      doc.setFontSize(11);
+      doc.setTextColor(0, 0, 0);
+      doc.text('Resumo de Conformidade:', 14, 45);
+      doc.setFontSize(9);
+      doc.text(`Conforme: ${counts.c} | Não Conforme: ${counts.nc} | N/A: ${counts.na}`, 14, 50);
+
       autoTable(doc, {
-        startY: 45,
+        startY: 55,
         head: [['Item', 'Status', 'Observação']],
         body: lastChecklist.items.map(i => [
           i.label,
-          i.status === 'C' ? 'CONFORME' : 'NÃO CONFORME',
+          i.status === 'C' ? 'CONFORME' : i.status === 'NC' ? '[!] NÃO CONFORME' : 'N/A',
           i.ncDescription || '-'
         ]),
         theme: 'grid',
         headStyles: { fillColor: [16, 185, 129] },
+        didParseCell: (data) => {
+          if (data.row.section === 'body' && data.column.index === 1) {
+            const val = data.cell.raw as string;
+            if (val && val.includes('NÃO CONFORME')) {
+              data.cell.styles.textColor = [220, 38, 38];
+              data.cell.styles.fontStyle = 'bold';
+            }
+          }
+        }
       });
       
       let yPos = (doc as any).lastAutoTable.finalY + 20;
@@ -628,13 +704,26 @@ export default function App() {
         headStyles: { fillColor: [16, 185, 129] },
       });
     } else if (reportType === 'checklist_geral') {
+      const allItems = checklists.flatMap(c => c.items as ChecklistItem[]);
+      const totalCounts = allItems.reduce((acc, item) => {
+        if (item.status === 'C') acc.c++;
+        else if (item.status === 'NC') acc.nc++;
+        else if (item.status === 'NA') acc.na++;
+        return acc;
+      }, { c: 0, nc: 0, na: 0 });
+
+      doc.setFontSize(12);
+      doc.text('Resumo de Conformidade Geral:', 14, 70);
+      doc.setFontSize(10);
+      doc.text(`Total Conforme: ${totalCounts.c} | Total Não Conforme: ${totalCounts.nc} | Total N/A: ${totalCounts.na}`, 14, 78);
+
       autoTable(doc, {
-        startY: 65,
+        startY: 85,
         head: [['Data', 'Ativo', 'Técnico', 'Status dos Itens']],
         body: checklists.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(c => {
           const asset = assets.find(a => a.id === c.assetId);
           const items = c.items as ChecklistItem[];
-          const statusSummary = items.map(i => `${i.id}: ${i.status}${i.status === 'NC' ? ' (!)' : ''}`).join(' | ');
+          const statusSummary = items.map(i => `${i.id}: ${i.status === 'NC' ? '[!] ' : ''}${i.status}`).join(' | ');
           
           return [
             new Date(c.date).toLocaleDateString('pt-BR'),
@@ -645,6 +734,14 @@ export default function App() {
         }),
         theme: 'grid',
         headStyles: { fillColor: [16, 185, 129] },
+        didParseCell: (data) => {
+          if (data.row.section === 'body' && data.column.index === 3) {
+            const val = data.cell.raw as string;
+            if (val && val.includes('[!]')) {
+              data.cell.styles.textColor = [220, 38, 38];
+            }
+          }
+        }
       });
     } else if (reportType === 'comparativo_semanal') {
       // Logic for weekly comparison
@@ -689,6 +786,14 @@ export default function App() {
       doc.setFontSize(12);
       doc.text('Resumo de Auditoria de Sistema', 14, 70);
       
+      const allItems = checklists.flatMap(c => c.items as ChecklistItem[]);
+      const totalCounts = allItems.reduce((acc, item) => {
+        if (item.status === 'C') acc.c++;
+        else if (item.status === 'NC') acc.nc++;
+        else if (item.status === 'NA') acc.na++;
+        return acc;
+      }, { c: 0, nc: 0, na: 0 });
+
       const stats = {
         totalAssets: assets.length,
         totalChecklists: checklists.length,
@@ -703,6 +808,9 @@ export default function App() {
           ['Total de Ativos Cadastrados', stats.totalAssets],
           ['Total de Checklists Realizados', stats.totalChecklists],
           ['Ativos em Estado Crítico', stats.criticalAssets],
+          ['Total de Itens Conformes', totalCounts.c],
+          ['Total de Itens Não Conformes', totalCounts.nc],
+          ['Total de Itens N/A', totalCounts.na],
           ['Documentos na Base de Conhecimento', stats.docsInKb],
           ['Modo de Operação', 'Local/Offline (Backup Manual)'],
         ],
@@ -939,7 +1047,7 @@ export default function App() {
                               <p className="text-[10px] text-zinc-500">{new Date(c.date).toLocaleDateString('pt-BR')} às {new Date(c.date).toLocaleTimeString('pt-BR')} - {c.technician}</p>
                             </div>
                             <button 
-                              onClick={() => asset && exportPDF(asset)}
+                              onClick={() => asset && generatePDF(c, asset)}
                               className="p-2 text-emerald-500 hover:bg-emerald-500/10 rounded-lg transition-colors"
                               title="Baixar Relatório Individual"
                             >
@@ -1642,13 +1750,13 @@ export default function App() {
                     </AnimatePresence>
 
                     {/* Actions */}
-                    <div className="grid grid-cols-2 gap-3 pt-4">
+                    <div className="grid grid-cols-3 gap-2 pt-4">
                       <button 
                         disabled={!tempPhoto}
                         onClick={() => handleChecklistStep('C')}
-                        className={`py-4 font-bold rounded-2xl active:scale-95 transition-all text-sm flex items-center justify-center gap-2 disabled:opacity-50 ${checklistItems[currentChecklistStep].status === 'C' ? 'bg-emerald-500 text-black' : 'bg-zinc-800 text-emerald-500'}`}
+                        className={`py-4 font-bold rounded-2xl active:scale-95 transition-all text-[10px] flex flex-col items-center justify-center gap-1 disabled:opacity-50 ${checklistItems[currentChecklistStep].status === 'C' ? 'bg-emerald-500 text-black' : 'bg-zinc-800 text-emerald-500'}`}
                       >
-                        <CheckCircle2 size={18} />
+                        <CheckCircle2 size={16} />
                         CONFORME
                       </button>
                       <button 
@@ -1662,10 +1770,17 @@ export default function App() {
                             setChecklistItems(updated);
                           }
                         }}
-                        className={`py-4 font-bold rounded-2xl active:scale-95 transition-all text-sm flex items-center justify-center gap-2 disabled:opacity-50 ${checklistItems[currentChecklistStep].status === 'NC' ? 'bg-red-500 text-white' : 'bg-zinc-800 text-red-500'}`}
+                        className={`py-4 font-bold rounded-2xl active:scale-95 transition-all text-[10px] flex flex-col items-center justify-center gap-1 disabled:opacity-50 ${checklistItems[currentChecklistStep].status === 'NC' ? 'bg-red-500 text-white' : 'bg-zinc-800 text-red-500'}`}
                       >
-                        <AlertTriangle size={18} />
+                        <AlertTriangle size={16} />
                         NÃO CONF.
+                      </button>
+                      <button 
+                        onClick={() => handleChecklistStep('NA')}
+                        className={`py-4 font-bold rounded-2xl active:scale-95 transition-all text-[10px] flex flex-col items-center justify-center gap-1 ${checklistItems[currentChecklistStep].status === 'NA' ? 'bg-zinc-500 text-white' : 'bg-zinc-800 text-zinc-400'}`}
+                      >
+                        <MinusCircle size={16} />
+                        N/A
                       </button>
                     </div>
                     {checklistItems[currentChecklistStep].status === 'NC' && (

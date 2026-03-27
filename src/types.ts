@@ -34,7 +34,7 @@ export interface ChecklistItem {
   id: string;
   label: string;
   description: string;
-  status: 'C' | 'NC' | null;
+  status: 'C' | 'NC' | 'NA' | null;
   photo: string | null;
   ncDescription?: string;
 }
