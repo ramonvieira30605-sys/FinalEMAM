@@ -30,7 +30,8 @@ import {
   ShieldCheck,
   Camera,
   ChevronLeft,
-  MinusCircle
+  MinusCircle,
+  Copy
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import jsPDF from 'jspdf';
@@ -41,16 +42,25 @@ import { Asset, AssetStatus, AssetType, Checklist, ChecklistItem, KnowledgeBaseD
 // --- Constants ---
 
 const ALL_CHECKLIST_ITEMS_TEMPLATE = [
-  { id: '1.1', type: 'Quadro' as AssetType, label: 'Estado dos Barramentos e Disjuntores', description: 'Sem sinais de aquecimento/escurecimento.' },
-  { id: '1.2', type: 'Quadro' as AssetType, label: 'Vedação e Fechamento', description: 'Portas e borrachas de vedação íntegras.' },
-  { id: '2.1', type: 'Soft-Starter' as AssetType, label: 'Status do Display', description: 'Sem códigos de erro ativos.' },
-  { id: '2.2', type: 'Soft-Starter' as AssetType, label: 'Sistema de Arrefecimento', description: 'Cooler girando e grades limpas.' },
-  { id: '3.1', type: 'Inversor' as AssetType, label: 'Parâmetros de Operação', description: 'Hz e Amperagem estabilizados.' },
-  { id: '3.2', type: 'Inversor' as AssetType, label: 'Bornes de Potência', description: 'Cabos de saída bem fixados e sem ressecamento.' },
-  { id: '4.1', type: 'Bomba' as AssetType, label: 'Caixa de Ligação e Prensa-Cabos', description: 'Totalmente vedados e secos.' },
-  { id: '4.2', type: 'Bomba' as AssetType, label: 'Malha de Aterramento', description: 'Cabo terra fixado na carcaça e sem oxidação.' },
-  { id: '4.1', type: 'Motor' as AssetType, label: 'Caixa de Ligação e Prensa-Cabos', description: 'Totalmente vedados e secos.' },
-  { id: '4.2', type: 'Motor' as AssetType, label: 'Malha de Aterramento', description: 'Cabo terra fixado na carcaça e sem oxidação.' },
+  // 1. QGBT (QUADRO GERAL)
+  { id: '1.1', type: 'Quadro' as AssetType, label: 'Portas fechadas e vedadas?', description: 'Verificar se as portas do QGBT estão devidamente fechadas e com vedação íntegra.' },
+  { id: '1.2', type: 'Quadro' as AssetType, label: 'Sinais de aquecimento/cheiro?', description: 'Verificar se há odor característico de queima ou sinais de calor excessivo nos componentes.' },
+  { id: '1.3', type: 'Quadro' as AssetType, label: 'FOTO DO BARRAMENTO/DISJUNTORES', description: '📸 ADICIONAR FOTO DO BARRAMENTO/DISJUNTORES (Registro visual obrigatório).' },
+
+  // 2. SOFT STARTER SSW07 + MOTOR
+  { id: '2.1', type: 'Soft-Starter' as AssetType, label: 'Display sem erros (E01, E04)?', description: 'Verificar se o display da Soft Starter não apresenta códigos de erro ativos.' },
+  { id: '2.2', type: 'Soft-Starter' as AssetType, label: 'Cooler operando normalmente?', description: 'Verificar se o ventilador de arrefecimento está operando sem ruídos ou obstruções.' },
+  { id: '2.3', type: 'Soft-Starter' as AssetType, label: 'FOTO DO DISPLAY LIGADO', description: '📸 ADICIONAR FOTO DO DISPLAY LIGADO (Registro visual obrigatório).' },
+
+  // 3. INVERSOR DE FREQUÊNCIA + MOTOR
+  { id: '3.1', type: 'Inversor' as AssetType, label: 'Frequência (Hz) está correta?', description: 'Verificar se a frequência de operação no display condiz com o esperado para o processo.' },
+  { id: '3.2', type: 'Inversor' as AssetType, label: 'Dissipador de calor está limpo?', description: 'Verificar se as aletas do dissipador traseiro estão livres de poeira ou obstruções.' },
+  { id: '3.3', type: 'Inversor' as AssetType, label: 'FOTO DOS BORNES/DISPLAY', description: '📸 ADICIONAR FOTO DOS BORNES/DISPLAY (Registro visual obrigatório).' },
+
+  // 4. BOMBAS (PARTE ELÉTRICA)
+  { id: '4.1', type: 'Bomba' as AssetType, label: 'Caixa de ligação vedada e seca?', description: 'Verificar se a caixa de bornes do motor da bomba está totalmente seca e vedada.' },
+  { id: '4.2', type: 'Bomba' as AssetType, label: 'Cabo de aterramento fixado?', description: 'Verificar se o cabo de proteção (terra) está firmemente conectado à carcaça.' },
+  { id: '4.3', type: 'Bomba' as AssetType, label: 'FOTO DA ENTRADA DE CABOS', description: '📸 ADICIONAR FOTO DA ENTRADA DE CABOS (PRENSA-CABOS) (Registro visual obrigatório).' },
 ];
 
 // Set PDF.js worker using a more robust method
@@ -102,6 +112,7 @@ export default function App() {
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [kbSearchTerm, setKbSearchTerm] = useState('');
   const [docSearchTerm, setDocSearchTerm] = useState('');
+  const [checklistSummary, setChecklistSummary] = useState<string | null>(null);
   
   // New states for Reports
   const [reportTechnician, setReportTechnician] = useState('');
@@ -569,12 +580,24 @@ export default function App() {
       observations: ''
     };
 
+    // Generate summary for copying
+    let summary = `--- 📋 RESUMO DE INSPEÇÃO DIÁRIA ---\n`;
+    summary += `DATA: ${new Date().toLocaleDateString('pt-BR')}\n`;
+    summary += `TÉCNICO: ${technicianName}\n`;
+    summary += `EQUIPAMENTO: ${selectedAsset.name} (${selectedAsset.type})\n\n`;
+
+    finalItems.forEach(item => {
+      const statusText = item.status === 'C' ? 'SIM' : item.status === 'NC' ? 'NÃO [CRÍTICO]' : 'N/A';
+      summary += `[${statusText}] ${item.label}\n`;
+      if (item.ncDescription) {
+        summary += `   OBS: ${item.ncDescription}\n`;
+      }
+    });
+    summary += `\n--- FIM DO RELATÓRIO ---`;
+
+    setChecklistSummary(summary);
     setChecklists(prev => [newChecklist, ...prev]);
-    setIsChecklistModalOpen(false);
     setIsChecklistStarted(false);
-    setTechnicianName('');
-    setTempPhoto(null);
-    setNcDescription('');
   };
 
   const exportPDF = (asset: Asset) => {
@@ -1632,13 +1655,15 @@ export default function App() {
             >
               <div className="flex justify-between items-center">
                 <div>
-                  <h3 className="text-xl font-bold">Checklist Diário</h3>
+                  <h3 className="text-xl font-bold">{checklistSummary ? 'Resumo da Inspeção' : 'Checklist Diário'}</h3>
                   <p className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest">{selectedAsset.name}</p>
                 </div>
                 <button 
                   onClick={() => {
                     setIsChecklistModalOpen(false);
                     setIsChecklistStarted(false);
+                    setChecklistSummary(null);
+                    setTechnicianName('');
                   }} 
                   className="text-zinc-500 hover:text-white"
                 >
@@ -1646,7 +1671,7 @@ export default function App() {
                 </button>
               </div>
 
-              {!isChecklistStarted ? (
+              {!isChecklistStarted && !checklistSummary ? (
                 <div className="space-y-6">
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Técnico Responsável</label>
@@ -1664,6 +1689,35 @@ export default function App() {
                   >
                     INICIAR COLETA DE DADOS
                   </button>
+                </div>
+              ) : checklistSummary ? (
+                <div className="space-y-6">
+                  <div className="p-4 bg-black border border-zinc-800 rounded-2xl font-mono text-[10px] whitespace-pre-wrap text-emerald-500 leading-relaxed max-h-[40vh] overflow-y-auto custom-scrollbar">
+                    {checklistSummary}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(checklistSummary);
+                        alert('Resumo copiado para a área de transferência!');
+                      }}
+                      className="py-4 bg-zinc-800 text-emerald-500 font-bold rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all text-xs"
+                    >
+                      <Copy size={16} />
+                      COPIAR TEXTO
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setIsChecklistModalOpen(false);
+                        setChecklistSummary(null);
+                        setTechnicianName('');
+                      }}
+                      className="py-4 bg-emerald-500 text-black font-bold rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all text-xs"
+                    >
+                      <CheckCircle2 size={16} />
+                      CONCLUIR
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-6">
@@ -1757,7 +1811,7 @@ export default function App() {
                         className={`py-4 font-bold rounded-2xl active:scale-95 transition-all text-[10px] flex flex-col items-center justify-center gap-1 disabled:opacity-50 ${checklistItems[currentChecklistStep].status === 'C' ? 'bg-emerald-500 text-black' : 'bg-zinc-800 text-emerald-500'}`}
                       >
                         <CheckCircle2 size={16} />
-                        CONFORME
+                        SIM
                       </button>
                       <button 
                         disabled={!tempPhoto}
@@ -1773,7 +1827,7 @@ export default function App() {
                         className={`py-4 font-bold rounded-2xl active:scale-95 transition-all text-[10px] flex flex-col items-center justify-center gap-1 disabled:opacity-50 ${checklistItems[currentChecklistStep].status === 'NC' ? 'bg-red-500 text-white' : 'bg-zinc-800 text-red-500'}`}
                       >
                         <AlertTriangle size={16} />
-                        NÃO CONF.
+                        NÃO
                       </button>
                       <button 
                         onClick={() => handleChecklistStep('NA')}
