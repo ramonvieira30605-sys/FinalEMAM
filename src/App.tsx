@@ -37,9 +37,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as pdfjsLib from 'pdfjs-dist';
-import { GoogleGenAI } from "@google/genai";
 import { Asset, AssetStatus, AssetType, Checklist, ChecklistItem, KnowledgeBaseDoc } from './types';
-import ReactMarkdown from 'react-markdown';
 
 // --- Constants ---
 
@@ -121,9 +119,6 @@ export default function App() {
   const [reportTechnician, setReportTechnician] = useState('');
   const [reportType, setReportType] = useState<'ativos' | 'auditoria' | 'checklist_geral' | 'comparativo_semanal'>('ativos');
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
-  const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
-  const [auditResult, setAuditResult] = useState<string | null>(null);
-  const [isAuditing, setIsAuditing] = useState(false);
 
   // Checklist Wizard States
   const [currentChecklistStep, setCurrentChecklistStep] = useState(0);
@@ -714,82 +709,6 @@ export default function App() {
     doc.save(`EMAM_Relatorio_${asset.serialNumber}.pdf`);
   };
 
-  const runGoldStandardAudit = (singleAsset?: Asset) => {
-    const targetAssets = singleAsset ? [singleAsset] : assets;
-    
-    if (targetAssets.length === 0) {
-      alert("Nenhum ativo cadastrado para auditoria.");
-      return;
-    }
-
-    setIsAuditing(true);
-    setIsAuditModalOpen(true);
-    setAuditResult(null);
-
-    // Simular processamento local (offline)
-    setTimeout(() => {
-      let report = "# Relatório de Auditoria Técnica (Modo Offline)\n\n";
-      report += "Este relatório foi gerado localmente com base nas regras do **Padrão Ouro WEG**.\n\n";
-
-      targetAssets.forEach((asset, index) => {
-        const isWEG = asset.model.toUpperCase().includes('WEG') || asset.name.toUpperCase().includes('WEG');
-        let score = 5;
-        let gaps = [];
-        let goldEquivalent = "";
-
-        if (asset.type === 'Inversor') {
-          goldEquivalent = "WEG CFW500";
-          if (asset.model.includes('CFW500')) score = 10;
-          else {
-            if (!asset.model.includes('STO')) gaps.push("Falta Segurança STO (NR12)");
-            if (!asset.model.includes('RFI')) gaps.push("Falta Filtro RFI integrado");
-            score = Math.max(0, 10 - (gaps.length * 2));
-          }
-        } else if (asset.type === 'Soft-Starter') {
-          goldEquivalent = "WEG SSW07/SSW08";
-          if (asset.model.includes('SSW07') || asset.model.includes('SSW08')) score = 10;
-          else {
-            gaps.push("Bypass Interno não confirmado");
-            gaps.push("Controle de Torque não verificado");
-            score = 6;
-          }
-        } else if (asset.type === 'Motor') {
-          goldEquivalent = "WEG W22 IR3/IR4";
-          if (asset.model.includes('W22')) score = 10;
-          else {
-            gaps.push("Eficiência IR2 (Inferior ao IR3 WEG)");
-            gaps.push("Grau de Proteção IP55 não garantido");
-            score = 7;
-          }
-        }
-
-        report += `## ${singleAsset ? '' : (index + 1) + '. '}${asset.name} (${asset.type})\n`;
-        report += `**Identificação:** ${asset.model} vs **${goldEquivalent}**\n\n`;
-        
-        report += "| Parâmetro | Ativo Atual | Padrão Ouro WEG |\n";
-        report += "| :--- | :--- | :--- |\n";
-        report += `| Potência | ${asset.technicalParams.power || '---'} | Equivalente WEG |\n`;
-        report += `| Tensão | ${asset.technicalParams.voltage || '---'} | 220/380/440V |\n`;
-        report += `| Corrente | ${asset.technicalParams.current || '---'} | Nominal WEG |\n`;
-        report += `| Eficiência | ${asset.type === 'Motor' ? 'IR2/Standard' : 'N/A'} | **IR3/IR4 Premium** |\n\n`;
-
-        if (gaps.length > 0) {
-          report += "### Análise de Gap:\n";
-          gaps.forEach(gap => report += `- ${gap}\n`);
-        } else {
-          report += "### Análise de Gap:\n- Ativo em conformidade total com o Padrão Ouro.\n";
-        }
-
-        report += `\n**Veredito de Confiabilidade:** ${score}/10\n`;
-        report += `*Impacto na Manutenção:* ${score < 8 ? 'Alto risco de paradas não programadas.' : 'Baixo risco, alta confiabilidade.'}\n\n`;
-        report += "---\n\n";
-      });
-
-      setAuditResult(report);
-      setIsAuditing(false);
-    }, 1500);
-  };
-
   const generateGeneralReport = () => {
     if (!reportTechnician.trim()) {
       alert('Por favor, informe o nome do responsável técnico.');
@@ -1026,35 +945,15 @@ export default function App() {
                 ADICIONAR ATIVO WEG
               </button>
 
-              <button 
-                onClick={() => runGoldStandardAudit()}
-                className="w-full py-4 bg-zinc-900 hover:bg-zinc-800 text-emerald-500 border border-emerald-500/30 font-bold rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95"
-              >
-                <ShieldCheck size={20} />
-                AUDITORIA PADRÃO OURO WEG
-              </button>
-
               <div className="space-y-3">
                 <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Atividades Recentes</h4>
                 {assets.slice(0, 3).map(asset => (
-                  <div key={asset.id} className="dark-card flex items-center justify-between group">
-                    <div className="flex-1 cursor-pointer" onClick={() => { setActiveTab('inventory'); setViewingAssetDetail(asset); }}>
-                      <p className="font-semibold text-sm group-hover:text-emerald-500 transition-colors">{asset.name}</p>
+                  <div key={asset.id} className="dark-card flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold text-sm">{asset.name}</p>
                       <p className="text-[10px] text-zinc-500">{asset.location}</p>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          runGoldStandardAudit(asset);
-                        }}
-                        className="p-2 bg-zinc-800 hover:bg-emerald-500/10 text-zinc-500 hover:text-emerald-500 rounded-lg transition-all active:scale-90"
-                        title="Auditoria Padrão Ouro"
-                      >
-                        <ShieldCheck size={16} />
-                      </button>
-                      <StatusBadge status={asset.status} />
-                    </div>
+                    <StatusBadge status={asset.status} />
                   </div>
                 ))}
                 {assets.length === 0 && (
@@ -1213,40 +1112,30 @@ export default function App() {
               </div>
 
               {/* Actions */}
-              <div className="space-y-3 pt-4">
+              <div className="grid grid-cols-2 gap-3 pt-4">
                 <button 
-                  onClick={() => runGoldStandardAudit(viewingAssetDetail)}
-                  className="w-full py-4 bg-zinc-900 hover:bg-zinc-800 text-emerald-500 border border-emerald-500/30 font-bold rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95"
+                  onClick={() => {
+                    setSelectedAsset(viewingAssetDetail);
+                    startChecklist(viewingAssetDetail);
+                  }}
+                  className="py-4 bg-emerald-500 hover:bg-emerald-600 text-black font-bold rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95"
                 >
-                  <ShieldCheck size={20} />
-                  AUDITORIA PADRÃO OURO WEG
+                  <Plus size={18} />
+                  NOVA INSPEÇÃO
                 </button>
-                
-                <div className="grid grid-cols-2 gap-3">
-                  <button 
-                    onClick={() => {
-                      setSelectedAsset(viewingAssetDetail);
-                      startChecklist(viewingAssetDetail);
-                    }}
-                    className="py-4 bg-emerald-500 hover:bg-emerald-600 text-black font-bold rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95"
-                  >
-                    <Plus size={18} />
-                    NOVA INSPEÇÃO
-                  </button>
-                  <button 
-                    onClick={() => {
-                      if (confirm('Deseja realmente excluir este ativo e todo seu histórico?')) {
-                        setAssets(prev => prev.filter(a => a.id !== viewingAssetDetail.id));
-                        setChecklists(prev => prev.filter(c => c.assetId !== viewingAssetDetail.id));
-                        setViewingAssetDetail(null);
-                      }
-                    }}
-                    className="py-4 bg-zinc-900 hover:bg-red-500/10 text-zinc-500 hover:text-red-500 border border-zinc-800 hover:border-red-500/50 font-bold rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95"
-                  >
-                    <Trash2 size={18} />
-                    EXCLUIR ATIVO
-                  </button>
-                </div>
+                <button 
+                  onClick={() => {
+                    if (confirm('Deseja realmente excluir este ativo e todo seu histórico?')) {
+                      setAssets(prev => prev.filter(a => a.id !== viewingAssetDetail.id));
+                      setChecklists(prev => prev.filter(c => c.assetId !== viewingAssetDetail.id));
+                      setViewingAssetDetail(null);
+                    }
+                  }}
+                  className="py-4 bg-zinc-900 hover:bg-red-500/10 text-zinc-500 hover:text-red-500 border border-zinc-800 hover:border-red-500/50 font-bold rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95"
+                >
+                  <Trash2 size={18} />
+                  EXCLUIR ATIVO
+                </button>
               </div>
             </motion.div>
           )}
@@ -1285,21 +1174,9 @@ export default function App() {
                     </div>
                     <div className="flex justify-between items-end">
                       <p className="text-[10px] text-zinc-500 font-mono">SN: {asset.serialNumber}</p>
-                      <div className="flex items-center gap-3">
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            runGoldStandardAudit(asset);
-                          }}
-                          className="flex items-center gap-1.5 px-2 py-1 bg-emerald-500/5 hover:bg-emerald-500/10 text-emerald-500 text-[9px] font-bold uppercase rounded-lg border border-emerald-500/20 transition-all active:scale-95"
-                        >
-                          <ShieldCheck size={12} />
-                          Auditoria
-                        </button>
-                        <div className="flex items-center gap-1 text-zinc-500 text-[10px] font-bold uppercase">
-                          <span>Ver Detalhes</span>
-                          <ChevronRight size={14} />
-                        </div>
+                      <div className="flex items-center gap-2 text-zinc-500 text-[10px] font-bold uppercase">
+                        <span>Ver Detalhes</span>
+                        <ChevronRight size={14} />
                       </div>
                     </div>
                   </div>
@@ -1755,101 +1632,6 @@ export default function App() {
 
       {/* Add Asset Modal */}
       <AnimatePresence>
-        {/* Audit Modal */}
-        <AnimatePresence>
-          {isAuditModalOpen && (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
-            >
-              <motion.div 
-                initial={{ scale: 0.9, opacity: 0, y: 20 }}
-                animate={{ scale: 1, opacity: 1, y: 0 }}
-                exit={{ scale: 0.9, opacity: 0, y: 20 }}
-                className="bg-zinc-950 border border-zinc-800 w-full max-w-lg rounded-3xl overflow-hidden flex flex-col max-h-[90vh]"
-              >
-                <div className="p-6 border-b border-zinc-900 flex justify-between items-center bg-zinc-900/50">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-emerald-500/10 rounded-xl">
-                      <ShieldCheck className="text-emerald-500" size={24} />
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-bold text-white">Auditoria Padrão Ouro</h3>
-                      <div className="flex items-center gap-2">
-                        <p className="text-[10px] text-zinc-500 uppercase tracking-widest">Análise de Conformidade WEG</p>
-                        <span className="px-1.5 py-0.5 bg-emerald-500/10 text-emerald-500 text-[8px] font-bold rounded-full border border-emerald-500/20">MODO OFFLINE</span>
-                      </div>
-                    </div>
-                  </div>
-                  <button 
-                    onClick={() => setIsAuditModalOpen(false)}
-                    className="p-2 hover:bg-zinc-800 rounded-full transition-colors"
-                  >
-                    <X size={20} className="text-zinc-500" />
-                  </button>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-                  {isAuditing ? (
-                    <div className="flex flex-col items-center justify-center py-12 space-y-4">
-                      <div className="relative">
-                        <div className="w-16 h-16 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin" />
-                        <ShieldCheck className="absolute inset-0 m-auto text-emerald-500" size={24} />
-                      </div>
-                      <div className="text-center">
-                        <p className="text-white font-bold">Analisando Ativos...</p>
-                        <p className="text-xs text-zinc-500 mt-1">Comparando com referências técnicas WEG</p>
-                      </div>
-                    </div>
-                  ) : auditResult ? (
-                    <div className="prose prose-invert prose-emerald max-w-none">
-                      <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-4 mb-6">
-                        <div className="flex items-center gap-2 text-emerald-500 mb-2">
-                          <AlertCircle size={16} />
-                          <span className="text-[10px] font-bold uppercase">Relatório Gerado pela IA</span>
-                        </div>
-                        <p className="text-[11px] text-zinc-400 leading-relaxed">
-                          Esta análise é baseada nos parâmetros técnicos fornecidos e nas especificações do Padrão Ouro WEG.
-                        </p>
-                      </div>
-                      <div className="text-zinc-300 text-sm leading-relaxed space-y-4">
-                        <ReactMarkdown>{auditResult}</ReactMarkdown>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-center py-12">
-                      <p className="text-zinc-500">Nenhum resultado disponível.</p>
-                    </div>
-                  )}
-                </div>
-
-                <div className="p-6 border-t border-zinc-900 bg-zinc-900/20 flex gap-3">
-                  <button 
-                    onClick={() => setIsAuditModalOpen(false)}
-                    className="flex-1 py-4 bg-zinc-800 hover:bg-zinc-700 text-white font-bold rounded-2xl transition-all active:scale-95"
-                  >
-                    FECHAR
-                  </button>
-                  {auditResult && (
-                    <button 
-                      onClick={() => {
-                        navigator.clipboard.writeText(auditResult);
-                        alert('Relatório de auditoria copiado!');
-                      }}
-                      className="flex-1 py-4 bg-emerald-500 hover:bg-emerald-600 text-black font-bold rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95"
-                    >
-                      <Copy size={18} />
-                      COPIAR
-                    </button>
-                  )}
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
         {isModalOpen && (
           <motion.div 
             initial={{ opacity: 0 }}
@@ -2104,7 +1886,7 @@ export default function App() {
                   </div>
                   <button 
                     disabled={!technicianName}
-                    onClick={() => startChecklist()}
+                    onClick={startChecklist}
                     className="w-full py-4 bg-emerald-500 text-black font-bold rounded-2xl active:scale-95 transition-all text-sm disabled:opacity-50 disabled:active:scale-100"
                   >
                     INICIAR COLETA DE DADOS
