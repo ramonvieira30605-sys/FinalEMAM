@@ -714,8 +714,10 @@ export default function App() {
     doc.save(`EMAM_Relatorio_${asset.serialNumber}.pdf`);
   };
 
-  const runGoldStandardAudit = () => {
-    if (assets.length === 0) {
+  const runGoldStandardAudit = (singleAsset?: Asset) => {
+    const targetAssets = singleAsset ? [singleAsset] : assets;
+    
+    if (targetAssets.length === 0) {
       alert("Nenhum ativo cadastrado para auditoria.");
       return;
     }
@@ -729,7 +731,7 @@ export default function App() {
       let report = "# Relatório de Auditoria Técnica (Modo Offline)\n\n";
       report += "Este relatório foi gerado localmente com base nas regras do **Padrão Ouro WEG**.\n\n";
 
-      assets.forEach((asset, index) => {
+      targetAssets.forEach((asset, index) => {
         const isWEG = asset.model.toUpperCase().includes('WEG') || asset.name.toUpperCase().includes('WEG');
         let score = 5;
         let gaps = [];
@@ -761,7 +763,7 @@ export default function App() {
           }
         }
 
-        report += `## ${index + 1}. ${asset.name} (${asset.type})\n`;
+        report += `## ${singleAsset ? '' : (index + 1) + '. '}${asset.name} (${asset.type})\n`;
         report += `**Identificação:** ${asset.model} vs **${goldEquivalent}**\n\n`;
         
         report += "| Parâmetro | Ativo Atual | Padrão Ouro WEG |\n";
@@ -1025,7 +1027,7 @@ export default function App() {
               </button>
 
               <button 
-                onClick={runGoldStandardAudit}
+                onClick={() => runGoldStandardAudit()}
                 className="w-full py-4 bg-zinc-900 hover:bg-zinc-800 text-emerald-500 border border-emerald-500/30 font-bold rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95"
               >
                 <ShieldCheck size={20} />
@@ -1035,12 +1037,24 @@ export default function App() {
               <div className="space-y-3">
                 <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Atividades Recentes</h4>
                 {assets.slice(0, 3).map(asset => (
-                  <div key={asset.id} className="dark-card flex items-center justify-between">
-                    <div>
-                      <p className="font-semibold text-sm">{asset.name}</p>
+                  <div key={asset.id} className="dark-card flex items-center justify-between group">
+                    <div className="flex-1 cursor-pointer" onClick={() => { setActiveTab('inventory'); setViewingAssetDetail(asset); }}>
+                      <p className="font-semibold text-sm group-hover:text-emerald-500 transition-colors">{asset.name}</p>
                       <p className="text-[10px] text-zinc-500">{asset.location}</p>
                     </div>
-                    <StatusBadge status={asset.status} />
+                    <div className="flex items-center gap-3">
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          runGoldStandardAudit(asset);
+                        }}
+                        className="p-2 bg-zinc-800 hover:bg-emerald-500/10 text-zinc-500 hover:text-emerald-500 rounded-lg transition-all active:scale-90"
+                        title="Auditoria Padrão Ouro"
+                      >
+                        <ShieldCheck size={16} />
+                      </button>
+                      <StatusBadge status={asset.status} />
+                    </div>
                   </div>
                 ))}
                 {assets.length === 0 && (
@@ -1199,30 +1213,40 @@ export default function App() {
               </div>
 
               {/* Actions */}
-              <div className="grid grid-cols-2 gap-3 pt-4">
+              <div className="space-y-3 pt-4">
                 <button 
-                  onClick={() => {
-                    setSelectedAsset(viewingAssetDetail);
-                    startChecklist(viewingAssetDetail);
-                  }}
-                  className="py-4 bg-emerald-500 hover:bg-emerald-600 text-black font-bold rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95"
+                  onClick={() => runGoldStandardAudit(viewingAssetDetail)}
+                  className="w-full py-4 bg-zinc-900 hover:bg-zinc-800 text-emerald-500 border border-emerald-500/30 font-bold rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95"
                 >
-                  <Plus size={18} />
-                  NOVA INSPEÇÃO
+                  <ShieldCheck size={20} />
+                  AUDITORIA PADRÃO OURO WEG
                 </button>
-                <button 
-                  onClick={() => {
-                    if (confirm('Deseja realmente excluir este ativo e todo seu histórico?')) {
-                      setAssets(prev => prev.filter(a => a.id !== viewingAssetDetail.id));
-                      setChecklists(prev => prev.filter(c => c.assetId !== viewingAssetDetail.id));
-                      setViewingAssetDetail(null);
-                    }
-                  }}
-                  className="py-4 bg-zinc-900 hover:bg-red-500/10 text-zinc-500 hover:text-red-500 border border-zinc-800 hover:border-red-500/50 font-bold rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95"
-                >
-                  <Trash2 size={18} />
-                  EXCLUIR ATIVO
-                </button>
+                
+                <div className="grid grid-cols-2 gap-3">
+                  <button 
+                    onClick={() => {
+                      setSelectedAsset(viewingAssetDetail);
+                      startChecklist(viewingAssetDetail);
+                    }}
+                    className="py-4 bg-emerald-500 hover:bg-emerald-600 text-black font-bold rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95"
+                  >
+                    <Plus size={18} />
+                    NOVA INSPEÇÃO
+                  </button>
+                  <button 
+                    onClick={() => {
+                      if (confirm('Deseja realmente excluir este ativo e todo seu histórico?')) {
+                        setAssets(prev => prev.filter(a => a.id !== viewingAssetDetail.id));
+                        setChecklists(prev => prev.filter(c => c.assetId !== viewingAssetDetail.id));
+                        setViewingAssetDetail(null);
+                      }
+                    }}
+                    className="py-4 bg-zinc-900 hover:bg-red-500/10 text-zinc-500 hover:text-red-500 border border-zinc-800 hover:border-red-500/50 font-bold rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95"
+                  >
+                    <Trash2 size={18} />
+                    EXCLUIR ATIVO
+                  </button>
+                </div>
               </div>
             </motion.div>
           )}
@@ -1261,9 +1285,21 @@ export default function App() {
                     </div>
                     <div className="flex justify-between items-end">
                       <p className="text-[10px] text-zinc-500 font-mono">SN: {asset.serialNumber}</p>
-                      <div className="flex items-center gap-2 text-zinc-500 text-[10px] font-bold uppercase">
-                        <span>Ver Detalhes</span>
-                        <ChevronRight size={14} />
+                      <div className="flex items-center gap-3">
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            runGoldStandardAudit(asset);
+                          }}
+                          className="flex items-center gap-1.5 px-2 py-1 bg-emerald-500/5 hover:bg-emerald-500/10 text-emerald-500 text-[9px] font-bold uppercase rounded-lg border border-emerald-500/20 transition-all active:scale-95"
+                        >
+                          <ShieldCheck size={12} />
+                          Auditoria
+                        </button>
+                        <div className="flex items-center gap-1 text-zinc-500 text-[10px] font-bold uppercase">
+                          <span>Ver Detalhes</span>
+                          <ChevronRight size={14} />
+                        </div>
                       </div>
                     </div>
                   </div>
