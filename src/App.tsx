@@ -98,6 +98,7 @@ const StatusBadge = ({ status }: { status: AssetStatus }) => {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'inventory' | 'guide' | 'knowledge' | 'reports'>('dashboard');
+  const [viewingAssetDetail, setViewingAssetDetail] = useState<Asset | null>(null);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
@@ -147,6 +148,11 @@ export default function App() {
       </>
     );
   };
+
+  // Reset asset detail view on tab change
+  useEffect(() => {
+    setViewingAssetDetail(null);
+  }, [activeTab]);
 
   // Load from LocalStorage
   useEffect(() => {
@@ -507,10 +513,12 @@ export default function App() {
     }
   };
 
-  const startChecklist = () => {
-    if (!selectedAsset) return;
+  const startChecklist = (assetOverride?: Asset) => {
+    const asset = assetOverride || selectedAsset;
+    if (!asset) return;
+    
     const items = ALL_CHECKLIST_ITEMS_TEMPLATE
-      .filter(item => item.type === selectedAsset.type)
+      .filter(item => item.type === asset.type)
       .map(item => ({
         ...item,
         status: null as 'C' | 'NC' | 'NA' | null,
@@ -548,7 +556,15 @@ export default function App() {
   };
 
   const handleChecklistStep = (status: 'C' | 'NC' | 'NA') => {
-    if (status !== 'NA' && !tempPhoto) return; // Photo is mandatory for C and NC
+    const currentItem = checklistItems[currentChecklistStep];
+    const isPhotoItem = currentItem.label.toUpperCase().includes('FOTO') || 
+                        currentItem.description.includes('📸');
+    const isPhotoMandatory = status === 'NC' || isPhotoItem;
+
+    if (isPhotoMandatory && !tempPhoto) {
+      alert('Este item exige uma foto como registro obrigatório.');
+      return;
+    }
 
     const updatedItems = [...checklistItems];
     updatedItems[currentChecklistStep] = {
@@ -947,8 +963,185 @@ export default function App() {
             </motion.div>
           )}
 
+          {/* Asset Details View */}
+          {activeTab === 'inventory' && viewingAssetDetail && (
+            <motion.div
+              key="asset-details"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-6 pb-8"
+            >
+              {/* Back Button */}
+              <button 
+                onClick={() => setViewingAssetDetail(null)}
+                className="flex items-center gap-2 text-zinc-500 hover:text-white transition-colors group"
+              >
+                <ChevronLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
+                <span className="text-xs font-bold uppercase tracking-widest">Voltar ao Inventário</span>
+              </button>
+
+              {/* Asset Header Card */}
+              <div className="dark-card border-emerald-500/30 bg-emerald-500/5 relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-4 opacity-10">
+                  <Package size={80} />
+                </div>
+                <div className="relative z-10 space-y-4">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest mb-1">{viewingAssetDetail.type}</p>
+                      <h2 className="text-2xl font-black text-white leading-tight">{viewingAssetDetail.name}</h2>
+                      <p className="text-xs text-zinc-400 mt-1 flex items-center gap-1">
+                        <Search size={12} /> {viewingAssetDetail.location}
+                      </p>
+                    </div>
+                    <StatusBadge status={viewingAssetDetail.status} />
+                  </div>
+                  
+                  <div className="flex items-center gap-4 pt-2 border-t border-zinc-800/50">
+                    <div>
+                      <p className="text-[8px] text-zinc-500 uppercase font-bold tracking-widest">Nº de Série</p>
+                      <p className="text-xs font-mono text-white">{viewingAssetDetail.serialNumber}</p>
+                    </div>
+                    <div>
+                      <p className="text-[8px] text-zinc-500 uppercase font-bold tracking-widest">Modelo</p>
+                      <p className="text-xs text-white">{viewingAssetDetail.model}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* QR Code Section */}
+              <div className="dark-card flex items-center gap-6 bg-white/5 border-zinc-800">
+                <div className="p-2 bg-white rounded-xl">
+                  <QRCodeSVG value={viewingAssetDetail.id} size={80} />
+                </div>
+                <div className="space-y-2">
+                  <h4 className="text-xs font-bold text-white uppercase tracking-tight">Identificação Digital</h4>
+                  <p className="text-[10px] text-zinc-500 leading-tight">Escaneie este código para acesso rápido aos parâmetros técnicos em campo.</p>
+                  <button 
+                    onClick={() => {
+                      navigator.clipboard.writeText(viewingAssetDetail.id);
+                      alert('ID do Ativo copiado!');
+                    }}
+                    className="text-[10px] font-bold text-emerald-500 flex items-center gap-1 hover:underline"
+                  >
+                    <Copy size={10} /> COPIAR ID
+                  </button>
+                </div>
+              </div>
+
+              {/* Technical Parameters */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 px-1">
+                  <Zap size={14} className="text-emerald-500" />
+                  <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Parâmetros Técnicos (WEG)</h4>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { label: 'Corrente (A)', value: viewingAssetDetail.technicalParams.current },
+                    { label: 'RPM', value: viewingAssetDetail.technicalParams.rpm },
+                    { label: 'Frequência (Hz)', value: viewingAssetDetail.technicalParams.frequency },
+                    { label: 'Potência (kW/cv)', value: viewingAssetDetail.technicalParams.power },
+                    { label: 'Tensão (V)', value: viewingAssetDetail.technicalParams.voltage },
+                    { label: 'Fator de Serviço', value: viewingAssetDetail.technicalParams.serviceFactor },
+                    { label: 'Motor Conectado', value: viewingAssetDetail.technicalParams.connectedMotor },
+                    { label: 'P0100 (Acel.)', value: viewingAssetDetail.technicalParams.p0100 },
+                    { label: 'P0101 (Desac.)', value: viewingAssetDetail.technicalParams.p0101 },
+                    { label: 'P0102 (V/f)', value: viewingAssetDetail.technicalParams.p0102 },
+                  ].map((param, idx) => (
+                    <div key={idx} className="p-3 bg-zinc-900/50 border border-zinc-800 rounded-xl">
+                      <p className="text-[8px] text-zinc-500 uppercase font-bold tracking-widest mb-1">{param.label}</p>
+                      <p className="text-sm font-bold text-white">{param.value || '---'}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Maintenance History */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between px-1">
+                  <div className="flex items-center gap-2">
+                    <Activity size={14} className="text-emerald-500" />
+                    <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Histórico de Manutenção</h4>
+                  </div>
+                  <span className="text-[10px] font-bold text-zinc-600 bg-zinc-900 px-2 py-0.5 rounded-full">
+                    {checklists.filter(c => c.assetId === viewingAssetDetail.id).length} Registros
+                  </span>
+                </div>
+                
+                <div className="space-y-2">
+                  {checklists
+                    .filter(c => c.assetId === viewingAssetDetail.id)
+                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                    .map(c => {
+                      const hasNC = c.items.some(i => i.status === 'NC');
+                      return (
+                        <div key={c.id} className="p-4 bg-zinc-900/30 border border-zinc-800 rounded-xl flex justify-between items-center group hover:border-zinc-700 transition-colors">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-white">
+                                {new Date(c.date).toLocaleDateString('pt-BR')}
+                              </span>
+                              {hasNC && (
+                                <span className="flex items-center gap-1 px-2 py-0.5 bg-red-500/10 text-red-500 text-[8px] font-bold rounded-full border border-red-500/20 animate-pulse">
+                                  <AlertTriangle size={8} /> NC DETECTADO
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-zinc-500">
+                              Técnico: {c.technician} • {new Date(c.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                          </div>
+                          <button 
+                            onClick={() => generatePDF(c, viewingAssetDetail)}
+                            className="p-2 text-emerald-500 hover:bg-emerald-500/10 rounded-lg transition-all active:scale-90"
+                            title="Baixar Relatório"
+                          >
+                            <Download size={16} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  {checklists.filter(c => c.assetId === viewingAssetDetail.id).length === 0 && (
+                    <div className="p-8 text-center border border-dashed border-zinc-800 rounded-2xl">
+                      <p className="text-xs text-zinc-600 italic">Nenhum checklist realizado para este ativo.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="grid grid-cols-2 gap-3 pt-4">
+                <button 
+                  onClick={() => {
+                    setSelectedAsset(viewingAssetDetail);
+                    startChecklist(viewingAssetDetail);
+                  }}
+                  className="py-4 bg-emerald-500 hover:bg-emerald-600 text-black font-bold rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95"
+                >
+                  <Plus size={18} />
+                  NOVA INSPEÇÃO
+                </button>
+                <button 
+                  onClick={() => {
+                    if (confirm('Deseja realmente excluir este ativo e todo seu histórico?')) {
+                      setAssets(prev => prev.filter(a => a.id !== viewingAssetDetail.id));
+                      setChecklists(prev => prev.filter(c => c.assetId !== viewingAssetDetail.id));
+                      setViewingAssetDetail(null);
+                    }
+                  }}
+                  className="py-4 bg-zinc-900 hover:bg-red-500/10 text-zinc-500 hover:text-red-500 border border-zinc-800 hover:border-red-500/50 font-bold rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95"
+                >
+                  <Trash2 size={18} />
+                  EXCLUIR ATIVO
+                </button>
+              </div>
+            </motion.div>
+          )}
+
           {/* Inventory */}
-          {activeTab === 'inventory' && (
+          {activeTab === 'inventory' && !viewingAssetDetail && (
             <motion.div 
               key="inventory"
               initial={{ opacity: 0, y: 10 }}
@@ -969,8 +1162,8 @@ export default function App() {
                 {assets.map(asset => (
                   <div 
                     key={asset.id} 
-                    onClick={() => setSelectedAsset(asset)}
-                    className={`dark-card cursor-pointer transition-all ${selectedAsset?.id === asset.id ? 'border-emerald-500/50 bg-emerald-500/5' : ''}`}
+                    onClick={() => setViewingAssetDetail(asset)}
+                    className="dark-card cursor-pointer transition-all hover:border-emerald-500/30 active:scale-[0.98]"
                   >
                     <div className="flex justify-between items-start mb-2">
                       <div>
@@ -981,10 +1174,19 @@ export default function App() {
                     </div>
                     <div className="flex justify-between items-end">
                       <p className="text-[10px] text-zinc-500 font-mono">SN: {asset.serialNumber}</p>
-                      <ChevronRight size={14} className="text-zinc-700" />
+                      <div className="flex items-center gap-2 text-zinc-500 text-[10px] font-bold uppercase">
+                        <span>Ver Detalhes</span>
+                        <ChevronRight size={14} />
+                      </div>
                     </div>
                   </div>
                 ))}
+                {assets.length === 0 && (
+                  <div className="text-center py-12 space-y-3">
+                    <Package size={48} className="mx-auto text-zinc-800" />
+                    <p className="text-zinc-500 text-sm italic">Nenhum ativo cadastrado.</p>
+                  </div>
+                )}
               </div>
             </motion.div>
           )}
@@ -1753,30 +1955,51 @@ export default function App() {
                     </div>
 
                     {/* Photo Upload Area */}
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Foto Obrigatória</label>
-                      <div className="relative aspect-video bg-black border-2 border-dashed border-zinc-800 rounded-2xl overflow-hidden flex flex-col items-center justify-center gap-2 group hover:border-emerald-500/30 transition-colors">
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
+                          {(checklistItems[currentChecklistStep].label.toUpperCase().includes('FOTO') || 
+                            checklistItems[currentChecklistStep].description.includes('📸')) 
+                            ? 'Foto Obrigatória' 
+                            : 'Foto (Opcional)'}
+                        </label>
+                        {tempPhoto && (
+                          <span className="text-[10px] font-bold text-emerald-500 uppercase flex items-center gap-1">
+                            <CheckCircle2 size={10} /> Foto Capturada
+                          </span>
+                        )}
+                      </div>
+                      
+                      <div className="relative aspect-video bg-black border-2 border-dashed border-zinc-800 rounded-2xl overflow-hidden flex flex-col items-center justify-center gap-3 group hover:border-emerald-500/50 transition-all duration-300">
                         {tempPhoto ? (
                           <>
                             <img src={tempPhoto} alt="Preview" className="w-full h-full object-cover" />
-                            <button 
-                              onClick={() => setTempPhoto(null)}
-                              className="absolute top-2 right-2 p-1 bg-black/50 rounded-full text-white hover:bg-red-500 transition-colors"
-                            >
-                              <X size={16} />
-                            </button>
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                              <button 
+                                onClick={() => setTempPhoto(null)}
+                                className="bg-red-500 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 active:scale-95 transition-transform"
+                              >
+                                <Trash2 size={14} /> REMOVER E TIRAR OUTRA
+                              </button>
+                            </div>
                           </>
                         ) : (
                           <>
                             <input 
                               type="file" 
                               accept="image/*" 
-                              capture="environment" 
                               onChange={handlePhotoCapture} 
                               className="absolute inset-0 opacity-0 cursor-pointer z-10" 
                             />
-                            <Camera size={32} className="text-zinc-600 group-hover:text-emerald-500 transition-colors" />
-                            <span className="text-[10px] font-bold text-zinc-500 uppercase">Toque para capturar foto</span>
+                            <div className="flex flex-col items-center gap-2 pointer-events-none">
+                              <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center group-hover:bg-emerald-500/20 group-hover:scale-110 transition-all duration-300">
+                                <Camera size={32} className="text-zinc-500 group-hover:text-emerald-500 transition-colors" />
+                              </div>
+                              <div className="text-center">
+                                <p className="text-xs font-bold text-white uppercase tracking-tight">Toque para Abrir Câmera</p>
+                                <p className="text-[10px] text-zinc-500 font-medium">Capture o registro visual do item</p>
+                              </div>
+                            </div>
                           </>
                         )}
                       </div>
@@ -1806,15 +2029,13 @@ export default function App() {
                     {/* Actions */}
                     <div className="grid grid-cols-3 gap-2 pt-4">
                       <button 
-                        disabled={!tempPhoto}
                         onClick={() => handleChecklistStep('C')}
-                        className={`py-4 font-bold rounded-2xl active:scale-95 transition-all text-[10px] flex flex-col items-center justify-center gap-1 disabled:opacity-50 ${checklistItems[currentChecklistStep].status === 'C' ? 'bg-emerald-500 text-black' : 'bg-zinc-800 text-emerald-500'}`}
+                        className={`py-4 font-bold rounded-2xl active:scale-95 transition-all text-[10px] flex flex-col items-center justify-center gap-1 ${checklistItems[currentChecklistStep].status === 'C' ? 'bg-emerald-500 text-black' : 'bg-zinc-800 text-emerald-500'}`}
                       >
                         <CheckCircle2 size={16} />
                         SIM
                       </button>
                       <button 
-                        disabled={!tempPhoto}
                         onClick={() => {
                           if (checklistItems[currentChecklistStep].status === 'NC') {
                             handleChecklistStep('NC');
@@ -1824,7 +2045,7 @@ export default function App() {
                             setChecklistItems(updated);
                           }
                         }}
-                        className={`py-4 font-bold rounded-2xl active:scale-95 transition-all text-[10px] flex flex-col items-center justify-center gap-1 disabled:opacity-50 ${checklistItems[currentChecklistStep].status === 'NC' ? 'bg-red-500 text-white' : 'bg-zinc-800 text-red-500'}`}
+                        className={`py-4 font-bold rounded-2xl active:scale-95 transition-all text-[10px] flex flex-col items-center justify-center gap-1 ${checklistItems[currentChecklistStep].status === 'NC' ? 'bg-red-500 text-white' : 'bg-zinc-800 text-red-500'}`}
                       >
                         <AlertTriangle size={16} />
                         NÃO
