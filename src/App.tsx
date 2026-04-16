@@ -3,7 +3,61 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, Component, ErrorInfo, ReactNode } from 'react';
+
+// Error Boundary Component
+export class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(_: Error) {
+    return { hasError: true };
+  }
+
+  override componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("ErrorBoundary caught an error", error, errorInfo);
+  }
+
+  override render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center justify-center h-screen bg-black text-white p-6 text-center">
+          <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center mb-6">
+            <AlertTriangle size={40} className="text-red-500" />
+          </div>
+          <h2 className="text-2xl font-black mb-2 uppercase tracking-tighter">Ops! Algo deu errado.</h2>
+          <p className="text-zinc-500 text-sm max-w-xs mb-8">
+            Ocorreu um erro inesperado ao processar as informações do ativo. 
+            Tente recarregar a página ou limpe os dados locais.
+          </p>
+          <div className="flex flex-col w-full gap-3">
+            <button 
+              onClick={() => window.location.reload()}
+              className="w-full py-4 bg-emerald-500 text-black font-bold rounded-2xl active:scale-95 transition-all"
+            >
+              RECARREGAR APLICATIVO
+            </button>
+            <button 
+              onClick={() => {
+                if (confirm('Atenção: Isso excluirá todos os seus ativos e checklists salvos localmente. Deseja continuar?')) {
+                  localStorage.clear();
+                  window.location.reload();
+                }
+              }}
+              className="w-full py-4 bg-zinc-900 text-zinc-500 font-bold rounded-2xl active:scale-95 transition-all border border-zinc-800"
+            >
+              LIMPAR TODOS OS DADOS
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   LayoutDashboard, 
@@ -125,6 +179,7 @@ export default function App() {
   const [isUploading, setIsUploading] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [kbSearchTerm, setKbSearchTerm] = useState('');
+  const [inventorySearchTerm, setInventorySearchTerm] = useState('');
   const [docSearchTerm, setDocSearchTerm] = useState('');
   const [checklistSummary, setChecklistSummary] = useState<string | null>(null);
   
@@ -141,6 +196,15 @@ export default function App() {
   const [tempPhoto, setTempPhoto] = useState<string | null>(null);
   const [ncDescription, setNcDescription] = useState('');
   const [measuredValue, setMeasuredValue] = useState('');
+
+  const filteredAssets = useMemo(() => {
+    return assets.filter(asset => 
+      asset.name.toLowerCase().includes(inventorySearchTerm.toLowerCase()) ||
+      asset.model.toLowerCase().includes(inventorySearchTerm.toLowerCase()) ||
+      asset.serialNumber.toLowerCase().includes(inventorySearchTerm.toLowerCase()) ||
+      asset.location.toLowerCase().includes(inventorySearchTerm.toLowerCase())
+    );
+  }, [assets, inventorySearchTerm]);
 
   const filteredKB = useMemo(() => {
     return knowledgeBase.filter(doc => 
@@ -1119,16 +1183,16 @@ export default function App() {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   {[
-                    { label: 'Corrente (A)', value: viewingAssetDetail.technicalParams.current },
-                    { label: 'RPM', value: viewingAssetDetail.technicalParams.rpm },
-                    { label: 'Frequência (Hz)', value: viewingAssetDetail.technicalParams.frequency },
-                    { label: 'Potência (kW/cv)', value: viewingAssetDetail.technicalParams.power },
-                    { label: 'Tensão (V)', value: viewingAssetDetail.technicalParams.voltage },
-                    { label: 'Fator de Serviço', value: viewingAssetDetail.technicalParams.serviceFactor },
-                    { label: 'Motor Conectado', value: viewingAssetDetail.technicalParams.connectedMotor },
-                    { label: 'P0100 (Acel.)', value: viewingAssetDetail.technicalParams.p0100 },
-                    { label: 'P0101 (Desac.)', value: viewingAssetDetail.technicalParams.p0101 },
-                    { label: 'P0102 (V/f)', value: viewingAssetDetail.technicalParams.p0102 },
+                    { label: 'Corrente (A)', value: viewingAssetDetail.technicalParams?.current },
+                    { label: 'RPM', value: viewingAssetDetail.technicalParams?.rpm },
+                    { label: 'Frequência (Hz)', value: viewingAssetDetail.technicalParams?.frequency },
+                    { label: 'Potência (kW/cv)', value: viewingAssetDetail.technicalParams?.power },
+                    { label: 'Tensão (V)', value: viewingAssetDetail.technicalParams?.voltage },
+                    { label: 'Fator de Serviço', value: viewingAssetDetail.technicalParams?.serviceFactor },
+                    { label: 'Motor Conectado', value: viewingAssetDetail.technicalParams?.connectedMotor },
+                    { label: 'P0100 (Acel.)', value: viewingAssetDetail.technicalParams?.p0100 },
+                    { label: 'P0101 (Desac.)', value: viewingAssetDetail.technicalParams?.p0101 },
+                    { label: 'P0102 (V/f)', value: viewingAssetDetail.technicalParams?.p0102 },
                   ].map((param, idx) => (
                     <div key={idx} className="p-3 bg-zinc-900/50 border border-zinc-800 rounded-xl">
                       <p className="text-[8px] text-zinc-500 uppercase font-bold tracking-widest mb-1">{param.label}</p>
@@ -1234,12 +1298,14 @@ export default function App() {
                 <input 
                   type="text" 
                   placeholder="Buscar por modelo ou série..."
+                  value={inventorySearchTerm}
+                  onChange={(e) => setInventorySearchTerm(e.target.value)}
                   className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:border-emerald-500/50 transition-colors"
                 />
               </div>
 
               <div className="space-y-3">
-                {assets.map(asset => (
+                {filteredAssets.map(asset => (
                   <div 
                     key={asset.id} 
                     onClick={() => setViewingAssetDetail(asset)}
@@ -1967,7 +2033,7 @@ export default function App() {
                   </div>
                   <button 
                     disabled={!technicianName}
-                    onClick={startChecklist}
+                    onClick={() => startChecklist()}
                     className="w-full py-4 bg-emerald-500 text-black font-bold rounded-2xl active:scale-95 transition-all text-sm disabled:opacity-50 disabled:active:scale-100"
                   >
                     INICIAR COLETA DE DADOS
