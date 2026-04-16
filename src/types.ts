@@ -37,6 +37,9 @@ export interface ChecklistItem {
   status: 'C' | 'NC' | 'NA' | null;
   photo: string | null;
   ncDescription?: string;
+  measuredValue?: string;
+  referenceValue?: string;
+  requiresValue?: boolean;
 }
 
 export interface Checklist {

@@ -45,22 +45,35 @@ const ALL_CHECKLIST_ITEMS_TEMPLATE = [
   // 1. QGBT (QUADRO GERAL)
   { id: '1.1', type: 'Quadro' as AssetType, label: 'Portas fechadas e vedadas?', description: 'Verificar se as portas do QGBT estão devidamente fechadas e com vedação íntegra.' },
   { id: '1.2', type: 'Quadro' as AssetType, label: 'Sinais de aquecimento/cheiro?', description: 'Verificar se há odor característico de queima ou sinais de calor excessivo nos componentes.' },
-  { id: '1.3', type: 'Quadro' as AssetType, label: 'FOTO DO BARRAMENTO/DISJUNTORES', description: '📸 ADICIONAR FOTO DO BARRAMENTO/DISJUNTORES (Registro visual obrigatório).' },
+  { id: '1.3', type: 'Quadro' as AssetType, label: 'Tensão entre Fases (R-S, S-T, T-R)', description: 'Medir tensão entre as fases. Ex: 380V ou 440V', requiresValue: true, referenceValue: '380V / 440V' },
+  { id: '1.4', type: 'Quadro' as AssetType, label: 'Corrente Total de Carga (L1, L2, L3)', description: 'Medir corrente total por fase. Conforme projeto.', requiresValue: true, referenceValue: 'Ver Projeto' },
+  { id: '1.5', type: 'Quadro' as AssetType, label: 'Temperatura Máx. (Termografia)', description: 'Temperatura das conexões (Máx. 65ºC).', requiresValue: true, referenceValue: '65ºC' },
+  { id: '1.6', type: 'Quadro' as AssetType, label: 'FOTO DO BARRAMENTO/DISJUNTORES', description: '📸 ADICIONAR FOTO DO BARRAMENTO/DISJUNTORES (Registro visual obrigatório).' },
 
   // 2. SOFT STARTER SSW07 + MOTOR
   { id: '2.1', type: 'Soft-Starter' as AssetType, label: 'Display sem erros (E01, E04)?', description: 'Verificar se o display da Soft Starter não apresenta códigos de erro ativos.' },
-  { id: '2.2', type: 'Soft-Starter' as AssetType, label: 'Cooler operando normalmente?', description: 'Verificar se o ventilador de arrefecimento está operando sem ruídos ou obstruções.' },
-  { id: '2.3', type: 'Soft-Starter' as AssetType, label: 'FOTO DO DISPLAY LIGADO', description: '📸 ADICIONAR FOTO DO DISPLAY LIGADO (Registro visual obrigatório).' },
+  { id: '2.2', type: 'Soft-Starter' as AssetType, label: 'Corrente de Partida (Pico)', description: 'Medir corrente de pico na partida. (3x a 5x Nominal).', requiresValue: true, referenceValue: '3-5x Nom.' },
+  { id: '2.3', type: 'Soft-Starter' as AssetType, label: 'Corrente em Regime (Bypass)', description: 'Medir corrente em regime. Deve ser igual à Nominal.', requiresValue: true, referenceValue: 'Nominal' },
+  { id: '2.4', type: 'Soft-Starter' as AssetType, label: 'Cooler operando normalmente?', description: 'Verificar se o ventilador de arrefecimento está operando sem ruídos ou obstruções.' },
+  { id: '2.5', type: 'Soft-Starter' as AssetType, label: 'FOTO DO DISPLAY LIGADO', description: '📸 ADICIONAR FOTO DO DISPLAY LIGADO (Registro visual obrigatório).' },
 
   // 3. INVERSOR DE FREQUÊNCIA + MOTOR
-  { id: '3.1', type: 'Inversor' as AssetType, label: 'Frequência (Hz) está correta?', description: 'Verificar se a frequência de operação no display condiz com o esperado para o processo.' },
-  { id: '3.2', type: 'Inversor' as AssetType, label: 'Dissipador de calor está limpo?', description: 'Verificar se as aletas do dissipador traseiro estão livres de poeira ou obstruções.' },
-  { id: '3.3', type: 'Inversor' as AssetType, label: 'FOTO DOS BORNES/DISPLAY', description: '📸 ADICIONAR FOTO DOS BORNES/DISPLAY (Registro visual obrigatório).' },
+  { id: '3.1', type: 'Inversor' as AssetType, label: 'Corrente de Saída (Display)', description: 'Verificar corrente no display. Deve ser menor que a Nominal.', requiresValue: true, referenceValue: '< Inom' },
+  { id: '3.2', type: 'Inversor' as AssetType, label: 'Frequência de Operação', description: 'Geralmente entre 0-60 Hz.', requiresValue: true, referenceValue: '0-60 Hz' },
+  { id: '3.3', type: 'Inversor' as AssetType, label: 'Tensão de Barramento CC (Bus)', description: 'Verificar tensão no barramento CC. Conforme manual.', requiresValue: true, referenceValue: 'Vcc Man.' },
+  { id: '3.4', type: 'Inversor' as AssetType, label: 'Dissipador de calor está limpo?', description: 'Verificar se as aletas do dissipador traseiro estão livres de poeira ou obstruções.' },
+  { id: '3.5', type: 'Inversor' as AssetType, label: 'FOTO DOS BORNES/DISPLAY', description: '📸 ADICIONAR FOTO DOS BORNES/DISPLAY (Registro visual obrigatório).' },
 
   // 4. BOMBAS (PARTE ELÉTRICA)
-  { id: '4.1', type: 'Bomba' as AssetType, label: 'Caixa de ligação vedada e seca?', description: 'Verificar se a caixa de bornes do motor da bomba está totalmente seca e vedada.' },
-  { id: '4.2', type: 'Bomba' as AssetType, label: 'Cabo de aterramento fixado?', description: 'Verificar se o cabo de proteção (terra) está firmemente conectado à carcaça.' },
-  { id: '4.3', type: 'Bomba' as AssetType, label: 'FOTO DA ENTRADA DE CABOS', description: '📸 ADICIONAR FOTO DA ENTRADA DE CABOS (PRENSA-CABOS) (Registro visual obrigatório).' },
+  { id: '4.1', type: 'Bomba' as AssetType, label: 'Pressão de Recalque (Manômetro)', description: 'Conforme Curva da Bomba.', requiresValue: true, referenceValue: 'Curva Bomba' },
+  { id: '4.2', type: 'Bomba' as AssetType, label: 'Pressão de Sucção', description: 'Evitar Cavitação.', requiresValue: true, referenceValue: '> 0 mca' },
+  { id: '4.3', type: 'Bomba' as AssetType, label: 'Caixa de ligação vedada e seca?', description: 'Verificar se a caixa de bornes do motor da bomba está totalmente seca e vedada.' },
+  { id: '4.4', type: 'Bomba' as AssetType, label: 'FOTO DA ENTRADA DE CABOS', description: '📸 ADICIONAR FOTO DA ENTRADA DE CABOS (PRENSA-CABOS) (Registro visual obrigatório).' },
+
+  // 5. MOTORES
+  { id: '5.1', type: 'Motor' as AssetType, label: 'Resistência de Isolação (Megômetro)', description: 'Desejável > 100 MΩ.', requiresValue: true, referenceValue: '> 100 MΩ' },
+  { id: '5.2', type: 'Motor' as AssetType, label: 'Vibração (mm/s ou visual/auditivo)', description: 'Nível baixo/estável.', requiresValue: true, referenceValue: 'Baixo' },
+  { id: '5.3', type: 'Motor' as AssetType, label: 'FOTO DA PLACA E CONEXÕES', description: '📸 ADICIONAR FOTO DA PLACA/CAIXA DE BORNES.' },
 ];
 
 // Set PDF.js worker using a more robust method
@@ -117,7 +130,7 @@ export default function App() {
   
   // New states for Reports
   const [reportTechnician, setReportTechnician] = useState('');
-  const [reportType, setReportType] = useState<'ativos' | 'auditoria' | 'checklist_geral' | 'comparativo_semanal'>('ativos');
+  const [reportType, setReportType] = useState<'ativos' | 'auditoria' | 'checklist_geral' | 'comparativo_semanal' | 'checklist_diario'>('ativos');
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
   // Checklist Wizard States
@@ -127,6 +140,7 @@ export default function App() {
   const [isChecklistStarted, setIsChecklistStarted] = useState(false);
   const [tempPhoto, setTempPhoto] = useState<string | null>(null);
   const [ncDescription, setNcDescription] = useState('');
+  const [measuredValue, setMeasuredValue] = useState('');
 
   const filteredKB = useMemo(() => {
     return knowledgeBase.filter(doc => 
@@ -262,12 +276,13 @@ export default function App() {
     const itemsData = checklist.items.map((item: ChecklistItem) => [
       item.label,
       item.status === 'C' ? 'CONFORME' : item.status === 'NC' ? '[!] NÃO CONFORME' : 'N/A',
+      item.measuredValue ? `${item.measuredValue} / ${item.referenceValue}` : '-',
       item.ncDescription || '-'
     ]);
 
     (doc as any).autoTable({
       startY: (doc as any).lastAutoTable.finalY + 10,
-      head: [['Item', 'Status', 'Observação']],
+      head: [['Item', 'Status', 'Valor / Ref.', 'Observação']],
       body: itemsData,
       theme: 'grid',
       headStyles: { fillColor: [16, 185, 129] },
@@ -523,7 +538,8 @@ export default function App() {
         ...item,
         status: null as 'C' | 'NC' | 'NA' | null,
         photo: null as string | null,
-        ncDescription: ''
+        ncDescription: '',
+        measuredValue: ''
       }));
     
     if (items.length === 0) {
@@ -542,6 +558,7 @@ export default function App() {
     setIsChecklistStarted(true);
     setTempPhoto(null);
     setNcDescription('');
+    setMeasuredValue('');
   };
 
   const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -571,7 +588,8 @@ export default function App() {
       ...updatedItems[currentChecklistStep],
       status,
       photo: tempPhoto,
-      ncDescription: status === 'NC' ? ncDescription : ''
+      ncDescription: status === 'NC' ? ncDescription : '',
+      measuredValue: currentItem.requiresValue ? measuredValue : undefined
     };
     setChecklistItems(updatedItems);
     
@@ -579,6 +597,7 @@ export default function App() {
       setCurrentChecklistStep(prev => prev + 1);
       setTempPhoto(null);
       setNcDescription('');
+      setMeasuredValue('');
     } else {
       finishChecklist(updatedItems);
     }
@@ -605,6 +624,9 @@ export default function App() {
     finalItems.forEach(item => {
       const statusText = item.status === 'C' ? 'SIM' : item.status === 'NC' ? 'NÃO [CRÍTICO]' : 'N/A';
       summary += `[${statusText}] ${item.label}\n`;
+      if (item.measuredValue) {
+        summary += `   VALOR: ${item.measuredValue} (REF: ${item.referenceValue || '-'})\n`;
+      }
       if (item.ncDescription) {
         summary += `   OBS: ${item.ncDescription}\n`;
       }
@@ -741,6 +763,64 @@ export default function App() {
         body: assets.map(a => [a.name, a.type, a.model, a.serialNumber, a.location, a.status]),
         theme: 'grid',
         headStyles: { fillColor: [16, 185, 129] },
+      });
+    } else if (reportType === 'checklist_diario') {
+      const today = new Date().toLocaleDateString('pt-BR');
+      const todaysChecklists = checklists.filter(c => new Date(c.date).toLocaleDateString('pt-BR') === today);
+
+      if (todaysChecklists.length === 0) {
+        alert('Nenhum checklist foi realizado hoje para compor o relatório consolidado.');
+        setIsGeneratingReport(false);
+        return;
+      }
+
+      doc.setFontSize(14);
+      doc.text('Relatório Técnico Consolidado Diário', 14, 70);
+      doc.setFontSize(10);
+      doc.text(`Total de Inspeções: ${todaysChecklists.length}`, 14, 78);
+
+      let currentY = 85;
+
+      todaysChecklists.forEach((c, index) => {
+        const asset = assets.find(a => a.id === c.assetId);
+        
+        if (currentY > 240) {
+          doc.addPage();
+          currentY = 20;
+        }
+
+        doc.setFillColor(244, 244, 245);
+        doc.rect(14, currentY, 182, 8, 'F');
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`${index + 1}. ATIVO: ${asset?.name || 'Desconhecido'} (${asset?.type || '-'})`, 16, currentY + 6);
+        doc.setFont('helvetica', 'normal');
+        
+        currentY += 12;
+
+        autoTable(doc, {
+          startY: currentY,
+          head: [['Item', 'Status', 'Valor / Ref.', 'Observação']],
+          body: c.items.map(i => [
+            i.label,
+            i.status === 'C' ? 'CONFORME' : i.status === 'NC' ? '[!] NÃO CONFORME' : 'N/A',
+            i.measuredValue ? `${i.measuredValue} / ${i.referenceValue}` : '-',
+            i.ncDescription || '-'
+          ]),
+          theme: 'grid',
+          headStyles: { fillColor: [63, 63, 70] },
+          styles: { fontSize: 8 },
+          didParseCell: (data) => {
+            if (data.row.section === 'body' && data.column.index === 1) {
+              const val = data.cell.raw as string;
+              if (val && val.includes('NÃO CONFORME')) {
+                data.cell.styles.textColor = [220, 38, 38];
+              }
+            }
+          }
+        });
+
+        currentY = (doc as any).lastAutoTable.finalY + 10;
       });
     } else if (reportType === 'checklist_geral') {
       const allItems = checklists.flatMap(c => c.items as ChecklistItem[]);
@@ -1220,12 +1300,13 @@ export default function App() {
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Tipo de Relatório</label>
                   <div className="grid grid-cols-1 gap-2">
-                    {[
-                      { id: 'ativos', label: 'Inventário de Ativos', icon: <Package size={16} /> },
-                      { id: 'checklist_geral', label: 'Histórico de Checklists', icon: <FileText size={16} /> },
-                      { id: 'comparativo_semanal', label: 'Comparativo Semanal (Tendência)', icon: <Activity size={16} /> },
-                      { id: 'auditoria', label: 'Auditoria de Sistema', icon: <Database size={16} /> },
-                    ].map((type) => (
+                      {[
+                        { id: 'ativos', label: 'Inventário de Ativos', icon: <Package size={16} /> },
+                        { id: 'checklist_diario', label: 'Relatório Técnico Diário (Consolidado)', icon: <ShieldCheck size={16} /> },
+                        { id: 'checklist_geral', label: 'Histórico de Checklists', icon: <FileText size={16} /> },
+                        { id: 'comparativo_semanal', label: 'Comparativo Semanal (Tendência)', icon: <Activity size={16} /> },
+                        { id: 'auditoria', label: 'Auditoria de Sistema', icon: <Database size={16} /> },
+                      ].map((type) => (
                       <button
                         key={type.id}
                         onClick={() => setReportType(type.id as any)}
@@ -1931,6 +2012,7 @@ export default function App() {
                           setCurrentChecklistStep(prev => prev - 1);
                           setTempPhoto(checklistItems[currentChecklistStep - 1].photo);
                           setNcDescription(checklistItems[currentChecklistStep - 1].ncDescription || '');
+                          setMeasuredValue(checklistItems[currentChecklistStep - 1].measuredValue || '');
                         }}
                         className="p-2 bg-zinc-800 text-zinc-400 rounded-xl hover:text-white transition-colors"
                       >
@@ -1953,6 +2035,24 @@ export default function App() {
                       <h4 className="text-lg font-bold leading-tight">{checklistItems[currentChecklistStep].label}</h4>
                       <p className="text-xs text-zinc-400">{checklistItems[currentChecklistStep].description}</p>
                     </div>
+
+                    {/* Measured Value Input */}
+                    {checklistItems[currentChecklistStep].requiresValue && (
+                      <div className="space-y-2 p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-2xl">
+                        <div className="flex justify-between items-center">
+                          <label className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Valor de Medição / Grandeza</label>
+                          <span className="text-[8px] font-bold text-zinc-500 uppercase">Ref: {checklistItems[currentChecklistStep].referenceValue}</span>
+                        </div>
+                        <input 
+                          type="text"
+                          value={measuredValue}
+                          onChange={(e) => setMeasuredValue(e.target.value)}
+                          placeholder="Ex: 380V, 12.5A, 45ºC..."
+                          className="w-full bg-black border border-zinc-800 rounded-xl py-3 px-4 text-sm text-white focus:outline-none focus:border-emerald-500 font-mono"
+                        />
+                        <p className="text-[9px] text-zinc-500 italic leading-tight">Insira o valor real encontrado em campo para este equipamento.</p>
+                      </div>
+                    )}
 
                     {/* Photo Upload Area */}
                     <div className="space-y-3">
@@ -2029,15 +2129,23 @@ export default function App() {
                     {/* Actions */}
                     <div className="grid grid-cols-3 gap-2 pt-4">
                       <button 
-                        onClick={() => handleChecklistStep('C')}
+                        onClick={() => {
+                          if (checklistItems[currentChecklistStep].requiresValue) {
+                            const updated = [...checklistItems];
+                            updated[currentChecklistStep].status = 'C';
+                            setChecklistItems(updated);
+                          } else {
+                            handleChecklistStep('C');
+                          }
+                        }}
                         className={`py-4 font-bold rounded-2xl active:scale-95 transition-all text-[10px] flex flex-col items-center justify-center gap-1 ${checklistItems[currentChecklistStep].status === 'C' ? 'bg-emerald-500 text-black' : 'bg-zinc-800 text-emerald-500'}`}
                       >
                         <CheckCircle2 size={16} />
-                        SIM
+                        CONFORME (C)
                       </button>
                       <button 
                         onClick={() => {
-                          if (checklistItems[currentChecklistStep].status === 'NC') {
+                          if (checklistItems[currentChecklistStep].status === 'NC' && !checklistItems[currentChecklistStep].requiresValue) {
                             handleChecklistStep('NC');
                           } else {
                             const updated = [...checklistItems];
@@ -2048,7 +2156,7 @@ export default function App() {
                         className={`py-4 font-bold rounded-2xl active:scale-95 transition-all text-[10px] flex flex-col items-center justify-center gap-1 ${checklistItems[currentChecklistStep].status === 'NC' ? 'bg-red-500 text-white' : 'bg-zinc-800 text-red-500'}`}
                       >
                         <AlertTriangle size={16} />
-                        NÃO
+                        NÃO CONF. (NC)
                       </button>
                       <button 
                         onClick={() => handleChecklistStep('NA')}
@@ -2058,13 +2166,14 @@ export default function App() {
                         N/A
                       </button>
                     </div>
-                    {checklistItems[currentChecklistStep].status === 'NC' && (
+                    {(checklistItems[currentChecklistStep].status === 'NC' || checklistItems[currentChecklistStep].requiresValue) && checklistItems[currentChecklistStep].status !== null && (
                       <button 
-                        disabled={!ncDescription}
-                        onClick={() => handleChecklistStep('NC')}
-                        className="w-full py-3 bg-emerald-500 text-black font-bold rounded-xl text-xs uppercase tracking-widest active:scale-95 transition-all"
+                        disabled={checklistItems[currentChecklistStep].status === 'NC' && !ncDescription.trim()}
+                        onClick={() => handleChecklistStep(checklistItems[currentChecklistStep].status as 'C' | 'NC')}
+                        className="w-full py-3 bg-emerald-500 text-black font-bold rounded-xl text-xs uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2"
                       >
                         Confirmar e Próximo
+                        <ChevronRight size={14} />
                       </button>
                     )}
                   </div>
