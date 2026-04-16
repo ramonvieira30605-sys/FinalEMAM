@@ -234,13 +234,41 @@ export default function App() {
 
   // Load from LocalStorage
   useEffect(() => {
+    const migrateData = (data: any) => {
+      if (data && Array.isArray(data)) {
+        return data.map((c: any) => {
+          if (c.items && !Array.isArray(c.items)) {
+            const migratedItems: ChecklistItem[] = Object.keys(c.items)
+              .filter(k => k !== 'observations')
+              .map(key => ({
+                id: key,
+                label: key,
+                description: '',
+                status: (c.items[key] === 'OK' || (typeof c.items[key] === 'string' && c.items[key].includes('OK'))) ? 'C' : 'NC',
+                photo: null,
+              }));
+            return {
+              ...c,
+              observations: c.items.observations || '',
+              items: migratedItems
+            };
+          }
+          return c;
+        });
+      }
+      return data || [];
+    };
+
     const loadInitialData = () => {
       try {
         const savedAssets = localStorage.getItem('emam_assets');
         if (savedAssets) setAssets(JSON.parse(savedAssets));
         
         const savedChecklists = localStorage.getItem('emam_checklists');
-        if (savedChecklists) setChecklists(JSON.parse(savedChecklists));
+        if (savedChecklists) {
+          const parsed = JSON.parse(savedChecklists);
+          setChecklists(migrateData(parsed));
+        }
         
         const savedKnowledge = localStorage.getItem('emam_knowledge');
         if (savedKnowledge) setKnowledgeBase(JSON.parse(savedKnowledge));
@@ -535,8 +563,26 @@ export default function App() {
         const data = JSON.parse(e.target?.result as string);
         if (data.assets && data.checklists) {
           if (confirm('Isso irá substituir seus dados atuais pelos dados do arquivo. Deseja continuar?')) {
+            // Migration logic for checklists in imported data
+            const migratedChecklists = data.checklists.map((c: any) => {
+              if (c.items && !Array.isArray(c.items)) {
+                return {
+                  ...c,
+                  observations: c.items.observations || '',
+                  items: Object.keys(c.items).filter(k => k !== 'observations').map(key => ({
+                    id: key,
+                    label: key,
+                    description: '',
+                    status: (c.items[key] === 'OK' || (typeof c.items[key] === 'string' && c.items[key].includes('OK'))) ? 'C' : 'NC',
+                    photo: null
+                  }))
+                };
+              }
+              return c;
+            });
+
             setAssets(data.assets);
-            setChecklists(data.checklists);
+            setChecklists(migratedChecklists);
             if (data.knowledgeBase) setKnowledgeBase(data.knowledgeBase);
             alert('Dados importados com sucesso!');
           }
