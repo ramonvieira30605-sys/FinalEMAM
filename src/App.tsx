@@ -977,6 +977,17 @@ export default function App() {
           doc.setFontSize(8);
           doc.setTextColor(100);
           doc.text(`SÉRIE: ${asset.serialNumber} | MODELO: ${asset.model} | LOCAL: ${asset.location}`, 16, currentY);
+          
+          // Adicionar Status do Equipamento no checklist
+          const status = c.equipmentStatus || 'N/A';
+          doc.setFont('helvetica', 'bold');
+          if (status === 'Operando') doc.setTextColor(16, 185, 129);
+          else if (status === 'Parado') doc.setTextColor(220, 38, 38);
+          else doc.setTextColor(100);
+          
+          doc.text(`ESTADO: ${status.toUpperCase()}`, 196, currentY, { align: 'right' });
+          
+          doc.setFont('helvetica', 'normal');
           doc.setTextColor(0);
           currentY += 5;
         }
