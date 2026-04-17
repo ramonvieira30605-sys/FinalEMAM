@@ -49,6 +49,7 @@ export interface Checklist {
   technician: string;
   items: ChecklistItem[];
   observations: string;
+  equipmentStatus: 'Operando' | 'Parado';
 }
 
 export interface KnowledgeBaseDoc {

@@ -196,6 +196,7 @@ export default function App() {
   const [tempPhoto, setTempPhoto] = useState<string | null>(null);
   const [ncDescription, setNcDescription] = useState('');
   const [measuredValue, setMeasuredValue] = useState('');
+  const [inspectionEquipmentStatus, setInspectionEquipmentStatus] = useState<'Operando' | 'Parado'>('Operando');
 
   const filteredAssets = useMemo(() => {
     return assets.filter(asset => 
@@ -341,6 +342,7 @@ export default function App() {
     
     const checklistData = [
       ['Data/Hora:', new Date(checklist.date).toLocaleString('pt-BR')],
+      ['Estado do Equipamento:', checklist.equipmentStatus || 'Não Inf.'],
       ['Técnico Responsável:', checklist.technician],
     ];
 
@@ -751,14 +753,16 @@ export default function App() {
       date: new Date().toISOString(),
       technician: technicianName,
       items: finalItems,
-      observations: ''
+      observations: '',
+      equipmentStatus: inspectionEquipmentStatus
     };
 
     // Generate summary for copying
     let summary = `--- 📋 RESUMO DE INSPEÇÃO DIÁRIA ---\n`;
-    summary += `DATA: ${new Date().toLocaleDateString('pt-BR')}\n`;
+    summary += `DATA: ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}\n`;
     summary += `TÉCNICO: ${technicianName}\n`;
-    summary += `EQUIPAMENTO: ${selectedAsset.name} (${selectedAsset.type})\n\n`;
+    summary += `EQUIPAMENTO: ${selectedAsset.name} (${selectedAsset.type})\n`;
+    summary += `ESTADO: ${inspectionEquipmentStatus.toUpperCase()}\n\n`;
 
     finalItems.forEach(item => {
       const statusText = item.status === 'C' ? 'SIM' : item.status === 'NC' ? 'NÃO [CRÍTICO]' : 'N/A';
@@ -807,8 +811,9 @@ export default function App() {
       doc.setFontSize(16);
       doc.text('Último Checklist Diário', 14, 22);
       doc.setFontSize(10);
-      doc.text(`Data: ${new Date(lastChecklist.date).toLocaleString()}`, 14, 30);
-      doc.text(`Técnico: ${lastChecklist.technician}`, 14, 35);
+      doc.text(`Data/Hora: ${new Date(lastChecklist.date).toLocaleString('pt-BR')}`, 14, 30);
+      doc.text(`Estado do Equipamento: ${lastChecklist.equipmentStatus || 'Não Inf.'}`, 14, 35);
+      doc.text(`Técnico: ${lastChecklist.technician}`, 14, 40);
 
       const counts = lastChecklist.items.reduce((acc, item) => {
         if (item.status === 'C') acc.c++;
@@ -1227,6 +1232,26 @@ export default function App() {
                       <p className="text-xs text-white">{viewingAssetDetail.model}</p>
                     </div>
                   </div>
+
+                  {/* Highlight Last Inspection */}
+                  {checklists.filter(c => c.assetId === viewingAssetDetail.id).length > 0 && (
+                    <div className="pt-3 border-t border-zinc-800/50 flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <p className="text-[8px] text-zinc-500 uppercase font-bold tracking-widest">Última Inspeção</p>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-white font-bold">
+                            {new Date(checklists.filter(c => c.assetId === viewingAssetDetail.id).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-right space-y-0.5">
+                        <p className="text-[8px] text-zinc-500 uppercase font-bold tracking-widest">Estado</p>
+                        <span className={`text-[10px] font-black uppercase ${checklists.filter(c => c.assetId === viewingAssetDetail.id).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].equipmentStatus === 'Operando' ? 'text-emerald-500' : 'text-red-500'}`}>
+                          {checklists.filter(c => c.assetId === viewingAssetDetail.id).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].equipmentStatus || '---'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1309,7 +1334,7 @@ export default function App() {
                               )}
                             </div>
                             <p className="text-[10px] text-zinc-500">
-                              Técnico: {c.technician} • {new Date(c.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                              Técnico: {c.technician} • {new Date(c.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} • <span className={c.equipmentStatus === 'Operando' ? 'text-emerald-500/80 font-bold' : 'text-red-500/80 font-bold'}>{c.equipmentStatus || 'N/A'}</span>
                             </p>
                           </div>
                           <button 
@@ -2097,14 +2122,34 @@ export default function App() {
 
               {!isChecklistStarted && !checklistSummary ? (
                 <div className="space-y-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Técnico Responsável</label>
-                    <input 
-                      value={technicianName}
-                      onChange={(e) => setTechnicianName(e.target.value)}
-                      placeholder="Seu nome completo" 
-                      className="w-full bg-black border border-zinc-800 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-emerald-500/50" 
-                    />
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Técnico Responsável</label>
+                      <input 
+                        value={technicianName}
+                        onChange={(e) => setTechnicianName(e.target.value)}
+                        placeholder="Seu nome completo" 
+                        className="w-full bg-black border border-zinc-800 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-emerald-500/50" 
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Estado do Equipamento</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => setInspectionEquipmentStatus('Operando')}
+                          className={`py-3 rounded-xl text-xs font-bold border transition-all ${inspectionEquipmentStatus === 'Operando' ? 'bg-emerald-500/10 border-emerald-500 text-emerald-500' : 'bg-black border-zinc-800 text-zinc-500'}`}
+                        >
+                          OPERANDO
+                        </button>
+                        <button
+                          onClick={() => setInspectionEquipmentStatus('Parado')}
+                          className={`py-3 rounded-xl text-xs font-bold border transition-all ${inspectionEquipmentStatus === 'Parado' ? 'bg-red-500/10 border-red-500 text-red-500' : 'bg-black border-zinc-800 text-zinc-500'}`}
+                        >
+                          PARADO
+                        </button>
+                      </div>
+                    </div>
                   </div>
                   <button 
                     disabled={!technicianName}
