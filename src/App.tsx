@@ -85,7 +85,9 @@ import {
   Camera,
   ChevronLeft,
   MinusCircle,
-  Copy
+  Copy,
+  Eye,
+  Edit3
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import jsPDF from 'jspdf';
@@ -197,6 +199,10 @@ export default function App() {
   const [ncDescription, setNcDescription] = useState('');
   const [measuredValue, setMeasuredValue] = useState('');
   const [inspectionEquipmentStatus, setInspectionEquipmentStatus] = useState<'Operando' | 'Parado'>('Operando');
+  
+  // New states for editing/viewing existing checklists
+  const [editingChecklist, setEditingChecklist] = useState<Checklist | null>(null);
+  const [viewingChecklist, setViewingChecklist] = useState<Checklist | null>(null);
 
   const filteredAssets = useMemo(() => {
     return assets.filter(asset => 
@@ -462,7 +468,7 @@ export default function App() {
       doc.setFontSize(8);
       doc.setTextColor(150);
       doc.text(
-        `Relatório Gerado por EMAM/ELT - GESTÃO WEG - ${new Date().toLocaleString('pt-BR')}`,
+        `Relatório Gerado por EMAM/ELT - ${new Date().toLocaleString('pt-BR')}`,
         105,
         285,
         { align: 'center' }
@@ -781,10 +787,34 @@ export default function App() {
     setIsChecklistStarted(false);
   };
 
+  const updateChecklistStatus = (checklistId: string, newStatus: 'Operando' | 'Parado') => {
+    setChecklists(prev => prev.map(c => 
+      c.id === checklistId ? { ...c, equipmentStatus: newStatus } : c
+    ));
+    setEditingChecklist(null);
+  };
+
+  const getChecklistTextSummary = (checklist: Checklist, asset: Asset) => {
+    let summary = `--- 📋 DETALHES DA INSPEÇÃO ---\n`;
+    summary += `DATA: ${new Date(checklist.date).toLocaleDateString('pt-BR')} ${new Date(checklist.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}\n`;
+    summary += `TÉCNICO: ${checklist.technician}\n`;
+    summary += `ATIVO: ${asset.name}\n`;
+    summary += `ESTADO: ${(checklist.equipmentStatus || 'N/A').toUpperCase()}\n\n`;
+    
+    checklist.items.forEach(item => {
+      const statusText = item.status === 'C' ? 'SIM' : item.status === 'NC' ? 'NÃO' : 'N/A';
+      summary += `[${statusText}] ${item.label}\n`;
+      if (item.measuredValue) summary += `   VALOR: ${item.measuredValue}\n`;
+      if (item.ncDescription) summary += `   OBS: ${item.ncDescription}\n`;
+    });
+    
+    return summary;
+  };
+
   const exportPDF = (asset: Asset) => {
     const doc = new jsPDF();
     doc.setFontSize(20);
-    doc.text('Relatório Técnico de Ativo WEG', 14, 22);
+    doc.text('Relatório Técnico de Ativo', 14, 22);
     doc.setFontSize(10);
     doc.text(`Gerado em: ${new Date().toLocaleString()}`, 14, 30);
 
@@ -891,7 +921,7 @@ export default function App() {
     doc.rect(0, 0, 210, 40, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(24);
-    doc.text('EMAM/ELT - GESTÃO WEG', 14, 25);
+    doc.text('EMAM/ELT - GESTÃO TÉCNICA', 14, 25);
     doc.setFontSize(10);
     doc.text(`RELATÓRIO: ${reportType.toUpperCase()}`, 14, 35);
     
@@ -1166,7 +1196,7 @@ export default function App() {
                 className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-black font-bold rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95"
               >
                 <Plus size={20} />
-                ADICIONAR ATIVO WEG
+                ADICIONAR ATIVO
               </button>
 
               <div className="space-y-3">
@@ -1276,27 +1306,30 @@ export default function App() {
               </div>
 
               {/* Technical Parameters */}
-              <div className="space-y-3">
+              <div className="space-y-4">
                 <div className="flex items-center gap-2 px-1">
-                  <Zap size={14} className="text-emerald-500" />
-                  <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Parâmetros Técnicos (WEG)</h4>
+                  <div className="p-1.5 bg-emerald-500/10 rounded-lg">
+                    <Zap size={14} className="text-emerald-500" />
+                  </div>
+                  <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Ficha Técnica</h4>
                 </div>
+                
                 <div className="grid grid-cols-2 gap-3">
                   {[
                     { label: 'Corrente (A)', value: viewingAssetDetail.technicalParams?.current },
                     { label: 'RPM', value: viewingAssetDetail.technicalParams?.rpm },
                     { label: 'Frequência (Hz)', value: viewingAssetDetail.technicalParams?.frequency },
-                    { label: 'Potência (kW/cv)', value: viewingAssetDetail.technicalParams?.power },
+                    { label: 'Potência', value: viewingAssetDetail.technicalParams?.power },
                     { label: 'Tensão (V)', value: viewingAssetDetail.technicalParams?.voltage },
-                    { label: 'Fator de Serviço', value: viewingAssetDetail.technicalParams?.serviceFactor },
-                    { label: 'Motor Conectado', value: viewingAssetDetail.technicalParams?.connectedMotor },
+                    { label: 'F. Serviço', value: viewingAssetDetail.technicalParams?.serviceFactor },
+                    { label: 'Motor', value: viewingAssetDetail.technicalParams?.connectedMotor },
                     { label: 'P0100 (Acel.)', value: viewingAssetDetail.technicalParams?.p0100 },
                     { label: 'P0101 (Desac.)', value: viewingAssetDetail.technicalParams?.p0101 },
-                    { label: 'P0102 (V/f)', value: viewingAssetDetail.technicalParams?.p0102 },
+                    { label: 'P0102 (Config.)', value: viewingAssetDetail.technicalParams?.p0102 },
                   ].map((param, idx) => (
-                    <div key={idx} className="p-3 bg-zinc-900/50 border border-zinc-800 rounded-xl">
-                      <p className="text-[8px] text-zinc-500 uppercase font-bold tracking-widest mb-1">{param.label}</p>
-                      <p className="text-sm font-bold text-white">{param.value || '---'}</p>
+                    <div key={idx} className="dark-card p-3 bg-zinc-900/40 border-zinc-800/60 transition-all hover:bg-zinc-900/60 group">
+                      <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest group-hover:text-emerald-500/70 transition-colors">{param.label}</p>
+                      <p className="text-lg font-black text-white mt-1 leading-none">{param.value || '---'}</p>
                     </div>
                   ))}
                 </div>
@@ -1329,7 +1362,7 @@ export default function App() {
                               </span>
                               {hasNC && (
                                 <span className="flex items-center gap-1 px-2 py-0.5 bg-red-500/10 text-red-500 text-[8px] font-bold rounded-full border border-red-500/20 animate-pulse">
-                                  <AlertTriangle size={8} /> NC DETECTADO
+                                  <AlertTriangle size={8} /> NC
                                 </span>
                               )}
                             </div>
@@ -1337,13 +1370,29 @@ export default function App() {
                               Técnico: {c.technician} • {new Date(c.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} • <span className={c.equipmentStatus === 'Operando' ? 'text-emerald-500/80 font-bold' : 'text-red-500/80 font-bold'}>{c.equipmentStatus || 'N/A'}</span>
                             </p>
                           </div>
-                          <button 
-                            onClick={() => generatePDF(c, viewingAssetDetail)}
-                            className="p-2 text-emerald-500 hover:bg-emerald-500/10 rounded-lg transition-all active:scale-90"
-                            title="Baixar Relatório"
-                          >
-                            <Download size={16} />
-                          </button>
+                          <div className="flex items-center gap-1">
+                            <button 
+                              onClick={() => setViewingChecklist(c)}
+                              className="p-2 text-zinc-500 hover:text-white hover:bg-zinc-800 rounded-lg transition-all"
+                              title="Ver Detalhes"
+                            >
+                              <Eye size={16} />
+                            </button>
+                            <button 
+                              onClick={() => setEditingChecklist(c)}
+                              className="p-2 text-zinc-500 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-lg transition-all"
+                              title="Editar Estado"
+                            >
+                              <Edit3 size={16} />
+                            </button>
+                            <button 
+                              onClick={() => generatePDF(c, viewingAssetDetail)}
+                              className="p-2 text-emerald-500 hover:bg-emerald-500/10 rounded-lg transition-all active:scale-90"
+                              title="Baixar PDF"
+                            >
+                              <Download size={16} />
+                            </button>
+                          </div>
                         </div>
                       );
                     })}
@@ -1539,7 +1588,7 @@ export default function App() {
                   <span className="text-[10px] font-bold uppercase">Aviso de Auditoria</span>
                 </div>
                 <p className="text-[11px] text-zinc-500 leading-relaxed">
-                  O comparativo semanal analisa os últimos 7 dias em relação ao período anterior para identificar tendências de falha nos ativos WEG.
+                  O comparativo semanal analisa os últimos 7 dias em relação ao período anterior para identificar tendências de falha nos ativos.
                 </p>
               </div>
             </motion.div>
@@ -1557,7 +1606,7 @@ export default function App() {
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-2xl font-bold text-white tracking-tight">Guia Técnico</h2>
-                  <p className="text-zinc-500 text-sm">Parâmetros Ouro WEG</p>
+                  <p className="text-zinc-500 text-sm">Parâmetros de Referência</p>
                 </div>
                 <div className="p-2 bg-emerald-500/10 rounded-xl">
                   <BookOpen className="w-5 h-5 text-emerald-500" />
@@ -1615,7 +1664,7 @@ export default function App() {
                     <div className="bg-black/40 rounded-xl p-4 border border-zinc-800/50">
                       <h4 className="text-[10px] font-bold text-purple-500 uppercase mb-2 tracking-widest">5. Preditiva 4.0</h4>
                       <p className="text-[10px] text-zinc-400">
-                        Instalar WEG Motor Scan para monitorar vibração e temperatura. Utilizar software WPS para extrair o log de eventos e analisar a curva de corrente pré-falha.
+                        Monitorar vibração e temperatura. Utilizar software de análise para extrair o log de eventos e analisar a curva de corrente pré-falha.
                       </p>
                     </div>
                   </div>
@@ -1893,7 +1942,7 @@ export default function App() {
               className="bg-zinc-900 border border-zinc-800 w-full rounded-3xl p-6 space-y-4"
             >
               <div className="flex justify-between items-center">
-                <h3 className="text-xl font-bold">Novo Ativo WEG</h3>
+                <h3 className="text-xl font-bold">Novo Ativo</h3>
                 <button onClick={() => setIsModalOpen(false)} className="text-zinc-500 hover:text-white"><X size={24} /></button>
               </div>
               <form onSubmit={handleAddAsset} className="space-y-4 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
@@ -2078,7 +2127,7 @@ export default function App() {
                     type="submit" 
                     className="py-4 bg-emerald-500 text-black font-bold rounded-2xl active:scale-95 transition-all text-sm"
                   >
-                    SALVAR ATIVO WEG
+                    SALVAR ATIVO
                   </button>
                 </div>
               </form>
@@ -2434,7 +2483,7 @@ export default function App() {
 
                 <div className="flex items-center justify-between">
                   <h4 className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Comparativo: Placa vs Ouro</h4>
-                  <span className="text-[8px] text-zinc-500 italic">Referência WEG SSW/CFW</span>
+                  <span className="text-[8px] text-zinc-500 italic">Referência Drive SSW/CFW</span>
                 </div>
                 
                 <div className="grid grid-cols-1 gap-2">
@@ -2517,15 +2566,34 @@ export default function App() {
                       checklists.filter(c => c.assetId === selectedAsset.id).map(checklist => (
                         <div key={checklist.id} className="p-4 bg-black/40 rounded-2xl border border-zinc-800/50 flex items-center justify-between">
                           <div>
-                            <p className="text-xs font-bold text-white">{new Date(checklist.date).toLocaleDateString('pt-BR')}</p>
+                            <p className="text-xs font-bold text-white flex items-center gap-2">
+                              {new Date(checklist.date).toLocaleDateString('pt-BR')}
+                              <span className={`text-[8px] px-1.5 py-0.5 rounded-full ${checklist.equipmentStatus === 'Operando' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
+                                {checklist.equipmentStatus || 'N/A'}
+                              </span>
+                            </p>
                             <p className="text-[10px] text-zinc-500 uppercase">{checklist.technician}</p>
                           </div>
-                          <button 
-                            onClick={() => generatePDF(checklist, selectedAsset)}
-                            className="p-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-emerald-500 transition-colors"
-                          >
-                            <Download size={16} />
-                          </button>
+                          <div className="flex items-center gap-1">
+                            <button 
+                              onClick={() => setViewingChecklist(checklist)}
+                              className="p-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-zinc-400 transition-colors"
+                            >
+                              <Eye size={16} />
+                            </button>
+                            <button 
+                              onClick={() => setEditingChecklist(checklist)}
+                              className="p-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-zinc-400 transition-colors"
+                            >
+                              <Edit3 size={16} />
+                            </button>
+                            <button 
+                              onClick={() => generatePDF(checklist, selectedAsset)}
+                              className="p-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-emerald-500 transition-colors"
+                            >
+                              <Download size={16} />
+                            </button>
+                          </div>
                         </div>
                       ))
                     )}
@@ -2536,7 +2604,7 @@ export default function App() {
 
             <div className="flex flex-col items-center gap-4 mb-8">
               <div className="p-4 bg-white rounded-2xl">
-                <QRCodeSVG value={`EMAM-WEG-${selectedAsset.id}`} size={120} />
+                <QRCodeSVG value={`EMAM-ID-${selectedAsset.id}`} size={120} />
               </div>
               <p className="text-[10px] text-zinc-500 font-mono">ID: {selectedAsset.id}</p>
             </div>
@@ -2557,6 +2625,102 @@ export default function App() {
                 EXCLUIR
               </button>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit Checklist Status Modal */}
+      <AnimatePresence>
+        {editingChecklist && (
+          <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/90 backdrop-blur-md z-[100] flex items-center justify-center p-4"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
+              className="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-3xl p-6 space-y-6"
+            >
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="text-xl font-bold">Editar Estado</h3>
+                  <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-widest">Inspeção de {new Date(editingChecklist.date).toLocaleDateString('pt-BR')}</p>
+                </div>
+                <button onClick={() => setEditingChecklist(null)} className="text-zinc-500 hover:text-white"><X size={24} /></button>
+              </div>
+
+              <div className="space-y-4">
+                <p className="text-xs text-zinc-400">Altere o estado do equipamento conforme observado durante a inspeção:</p>
+                <div className="grid grid-cols-1 gap-2">
+                  <button
+                    onClick={() => updateChecklistStatus(editingChecklist.id, 'Operando')}
+                    className={`py-4 rounded-2xl text-sm font-bold border transition-all flex items-center justify-center gap-3 ${editingChecklist.equipmentStatus === 'Operando' ? 'bg-emerald-500 text-black border-emerald-500' : 'bg-black border-zinc-800 text-zinc-500 hover:border-emerald-500/50'}`}
+                  >
+                    <Activity size={18} />
+                    OPERANDO
+                  </button>
+                  <button
+                    onClick={() => updateChecklistStatus(editingChecklist.id, 'Parado')}
+                    className={`py-4 rounded-2xl text-sm font-bold border transition-all flex items-center justify-center gap-3 ${editingChecklist.equipmentStatus === 'Parado' ? 'bg-red-500 text-white border-red-500' : 'bg-black border-zinc-800 text-zinc-500 hover:border-red-500/50'}`}
+                  >
+                    <Trash2 size={18} />
+                    PARADO
+                  </button>
+                </div>
+              </div>
+
+              <button 
+                onClick={() => setEditingChecklist(null)}
+                className="w-full py-4 bg-zinc-800 text-white font-bold rounded-2xl active:scale-95 transition-all text-xs"
+              >
+                CANCELAR
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* View Checklist Details Modal */}
+      <AnimatePresence>
+        {viewingChecklist && (
+          <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/95 backdrop-blur-xl z-[100] flex items-center justify-center p-4"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
+              className="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-3xl p-6 space-y-6 max-h-[90vh] overflow-y-auto custom-scrollbar"
+            >
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="text-xl font-bold">Resumo da Inspeção</h3>
+                  <p className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest">{new Date(viewingChecklist.date).toLocaleString('pt-BR')}</p>
+                </div>
+                <button onClick={() => setViewingChecklist(null)} className="text-zinc-500 hover:text-white"><X size={24} /></button>
+              </div>
+
+              <div className="p-5 bg-black border border-zinc-800 rounded-2xl font-mono text-[11px] whitespace-pre-wrap text-emerald-500 focus:outline-none">
+                {getChecklistTextSummary(viewingChecklist, assets.find(a => a.id === viewingChecklist.assetId) || ({} as Asset))}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(getChecklistTextSummary(viewingChecklist, assets.find(a => a.id === viewingChecklist.assetId) || ({} as Asset)));
+                    alert('Checklist copiado!');
+                  }}
+                  className="py-4 bg-zinc-800 text-emerald-400 font-bold rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all text-xs"
+                >
+                  <Copy size={16} />
+                  COPIAR
+                </button>
+                <button 
+                  onClick={() => setViewingChecklist(null)}
+                  className="py-4 bg-emerald-500 text-black font-bold rounded-2xl active:scale-95 transition-all text-xs"
+                >
+                  FECHAR
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
