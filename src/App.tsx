@@ -333,12 +333,12 @@ export default function App() {
       ['Motor Conectado:', asset.technicalParams?.connectedMotor || 'N/A']
     ];
     
-    (doc as any).autoTable({
+    autoTable(doc, {
       startY: 60,
       body: assetData,
       theme: 'plain',
       styles: { fontSize: 10, cellPadding: 2 },
-      columnStyles: { 0: { fontStyle: 'bold', width: 40 } }
+      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40 } }
     });
 
     // Checklist Info
@@ -365,12 +365,12 @@ export default function App() {
     doc.setFontSize(9);
     doc.text(`Conforme: ${counts.c} | Não Conforme: ${counts.nc} | N/A: ${counts.na}`, 14, startYChecklist + 15);
 
-    (doc as any).autoTable({
+    autoTable(doc, {
       startY: startYChecklist + 20,
       body: checklistData,
       theme: 'plain',
       styles: { fontSize: 10, cellPadding: 2 },
-      columnStyles: { 0: { fontStyle: 'bold', width: 50 } }
+      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 50 } }
     });
 
     const itemsData = checklist.items.map((item: ChecklistItem) => [
@@ -380,7 +380,7 @@ export default function App() {
       item.ncDescription || '-'
     ]);
 
-    (doc as any).autoTable({
+    autoTable(doc, {
       startY: (doc as any).lastAutoTable.finalY + 10,
       head: [['Item', 'Status', 'Valor / Ref.', 'Observação']],
       body: itemsData,
@@ -452,7 +452,7 @@ export default function App() {
         ['Limite Corrente (P0110):', asset.technicalParams.p0110 || '-']
       ];
 
-      (doc as any).autoTable({
+      autoTable(doc, {
         startY: startYParams + 5,
         body: paramsData,
         theme: 'grid',
@@ -958,7 +958,7 @@ export default function App() {
       todaysChecklists.forEach((c, index) => {
         const asset = assets.find(a => a.id === c.assetId);
         
-        if (currentY > 240) {
+        if (currentY > 230) {
           doc.addPage();
           currentY = 20;
         }
@@ -970,7 +970,16 @@ export default function App() {
         doc.text(`${index + 1}. ATIVO: ${asset?.name || 'Desconhecido'} (${asset?.type || '-'})`, 16, currentY + 6);
         doc.setFont('helvetica', 'normal');
         
-        currentY += 12;
+        currentY += 10;
+
+        // Adicionar detalhes técnicos do ativo se existir
+        if (asset) {
+          doc.setFontSize(8);
+          doc.setTextColor(100);
+          doc.text(`SÉRIE: ${asset.serialNumber} | MODELO: ${asset.model} | LOCAL: ${asset.location}`, 16, currentY);
+          doc.setTextColor(0);
+          currentY += 5;
+        }
 
         autoTable(doc, {
           startY: currentY,
@@ -995,6 +1004,28 @@ export default function App() {
         });
 
         currentY = (doc as any).lastAutoTable.finalY + 10;
+
+        // Fotos no consolidado
+        c.items.forEach(item => {
+          if (item.photo) {
+            if (currentY > 240) {
+              doc.addPage();
+              currentY = 20;
+            }
+            doc.setFontSize(7);
+            doc.text(`Registro Foto: ${item.label}`, 14, currentY);
+            try {
+              if (item.photo.startsWith('data:image')) {
+                doc.addImage(item.photo, 'JPEG', 14, currentY + 2, 40, 30);
+                currentY += 35;
+              }
+            } catch (e) {
+              currentY += 5;
+            }
+          }
+        });
+        
+        currentY += 5;
       });
     } else if (reportType === 'checklist_geral') {
       const allItems = checklists.flatMap(c => c.items as ChecklistItem[]);
@@ -1226,14 +1257,46 @@ export default function App() {
               exit={{ opacity: 0, x: -20 }}
               className="space-y-6 pb-8"
             >
-              {/* Back Button */}
-              <button 
-                onClick={() => setViewingAssetDetail(null)}
-                className="flex items-center gap-2 text-zinc-500 hover:text-white transition-colors group"
-              >
-                <ChevronLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
-                <span className="text-xs font-bold uppercase tracking-widest">Voltar ao Inventário</span>
-              </button>
+              {/* Header with Navigation */}
+              <div className="flex items-center justify-between">
+                <button 
+                  onClick={() => setViewingAssetDetail(null)}
+                  className="flex items-center gap-2 text-zinc-500 hover:text-white transition-colors group"
+                >
+                  <ChevronLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
+                  <span className="text-xs font-bold uppercase tracking-widest">Sair</span>
+                </button>
+
+                <div className="flex items-center gap-2">
+                  {(() => {
+                    const currentIndex = assets.findIndex(a => a.id === viewingAssetDetail.id);
+                    const prevAsset = currentIndex > 0 ? assets[currentIndex - 1] : null;
+                    const nextAsset = currentIndex < assets.length - 1 ? assets[currentIndex + 1] : null;
+
+                    return (
+                      <>
+                        <button 
+                          disabled={!prevAsset}
+                          onClick={() => prevAsset && setViewingAssetDetail(prevAsset)}
+                          className={`p-2 rounded-xl border border-zinc-800 transition-all ${!prevAsset ? 'opacity-30' : 'hover:bg-zinc-800 active:scale-90'}`}
+                        >
+                          <ChevronLeft size={16} />
+                        </button>
+                        <span className="text-[10px] font-black w-10 text-center text-zinc-500">
+                          {currentIndex + 1} / {assets.length}
+                        </span>
+                        <button 
+                          disabled={!nextAsset}
+                          onClick={() => nextAsset && setViewingAssetDetail(nextAsset)}
+                          className={`p-2 rounded-xl border border-zinc-800 transition-all ${!nextAsset ? 'opacity-30' : 'hover:bg-zinc-800 active:scale-90'}`}
+                        >
+                          <ChevronRight size={16} />
+                        </button>
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
 
               {/* Asset Header Card */}
               <div className="dark-card border-emerald-500/30 bg-emerald-500/5 relative overflow-hidden">
