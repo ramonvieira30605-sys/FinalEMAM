@@ -675,8 +675,37 @@ export default function App() {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setTempPhoto(reader.result as string);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 1200;
+          const MAX_HEIGHT = 1200;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height *= MAX_WIDTH / width;
+              width = MAX_WIDTH;
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width *= MAX_HEIGHT / height;
+              height = MAX_HEIGHT;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
+          
+          // Compress quality to 70% to save space
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+          setTempPhoto(dataUrl);
+        };
+        img.src = event.target?.result as string;
       };
       reader.readAsDataURL(file);
     }
@@ -2182,11 +2211,11 @@ export default function App() {
                         )}
                       </div>
                       
-                      <div className="relative aspect-video bg-black border-2 border-dashed border-zinc-800 rounded-2xl overflow-hidden flex flex-col items-center justify-center gap-3 group hover:border-emerald-500/50 transition-all duration-300">
+                      <div className="relative aspect-video bg-black border-2 border-dashed border-zinc-800 rounded-2xl overflow-hidden flex flex-col items-center justify-center gap-3">
                         {tempPhoto ? (
                           <>
                             <img src={tempPhoto} alt="Preview" className="w-full h-full object-cover" />
-                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center">
                               <button 
                                 onClick={() => setTempPhoto(null)}
                                 className="bg-red-500 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 active:scale-95 transition-transform"
@@ -2196,23 +2225,29 @@ export default function App() {
                             </div>
                           </>
                         ) : (
-                          <>
-                            <input 
-                              type="file" 
-                              accept="image/*" 
-                              onChange={handlePhotoCapture} 
-                              className="absolute inset-0 opacity-0 cursor-pointer z-10" 
-                            />
-                            <div className="flex flex-col items-center gap-2 pointer-events-none">
-                              <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center group-hover:bg-emerald-500/20 group-hover:scale-110 transition-all duration-300">
-                                <Camera size={32} className="text-zinc-500 group-hover:text-emerald-500 transition-colors" />
-                              </div>
-                              <div className="text-center">
-                                <p className="text-xs font-bold text-white uppercase tracking-tight">Toque para Abrir Câmera</p>
-                                <p className="text-[10px] text-zinc-500 font-medium">Capture o registro visual do item</p>
-                              </div>
-                            </div>
-                          </>
+                          <div className="grid grid-cols-2 gap-4 w-full p-4 h-full">
+                            <label className="flex flex-col items-center justify-center bg-zinc-900/50 border border-zinc-800 rounded-2xl cursor-pointer active:scale-95 transition-all hover:bg-emerald-500/5 hover:border-emerald-500/20 group">
+                              <Camera size={28} className="text-emerald-500 mb-2 group-hover:scale-110 transition-transform" />
+                              <span className="text-[10px] font-black text-zinc-400 uppercase tracking-tighter">Câmera</span>
+                              <input 
+                                type="file" 
+                                accept="image/*" 
+                                capture="environment" 
+                                onChange={handlePhotoCapture} 
+                                className="hidden" 
+                              />
+                            </label>
+                            <label className="flex flex-col items-center justify-center bg-zinc-900/50 border border-zinc-800 rounded-2xl cursor-pointer active:scale-95 transition-all hover:bg-emerald-500/5 hover:border-emerald-500/20 group">
+                              <Upload size={28} className="text-zinc-500 mb-2 group-hover:scale-110 transition-transform" />
+                              <span className="text-[10px] font-black text-zinc-400 uppercase tracking-tighter">Galeria</span>
+                              <input 
+                                type="file" 
+                                accept="image/*" 
+                                onChange={handlePhotoCapture} 
+                                className="hidden" 
+                              />
+                            </label>
+                          </div>
                         )}
                       </div>
                     </div>
