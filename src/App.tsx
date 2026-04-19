@@ -101,6 +101,8 @@ const ALL_CHECKLIST_ITEMS_TEMPLATE = [
   // 1. QGBT (QUADRO GERAL)
   { id: '1.1', type: 'Quadro' as AssetType, label: 'Portas fechadas e vedadas?', description: 'Verificar se as portas do QGBT estão devidamente fechadas e com vedação íntegra.' },
   { id: '1.2', type: 'Quadro' as AssetType, label: 'Sinais de aquecimento/cheiro?', description: 'Verificar se há odor característico de queima ou sinais de calor excessivo nos componentes.' },
+  { id: '1.2.1', type: 'Quadro' as AssetType, label: 'Limpeza e conservação do painel', description: 'O painel está limpo, sem poeira acumulada e com a pintura preservada?' },
+  { id: '1.2.2', type: 'Quadro' as AssetType, label: 'Inspeção visual de barramento/cabos', description: 'Verificar se há sinais de oxidação ou vibração excessiva nos condutores.' },
   { id: '1.3', type: 'Quadro' as AssetType, label: 'Tensão entre Fases (R-S, S-T, T-R)', description: 'Medir tensão entre as fases. Ex: 380V ou 440V', requiresValue: true, referenceValue: '380V / 440V' },
   { id: '1.4', type: 'Quadro' as AssetType, label: 'Corrente Total de Carga (L1, L2, L3)', description: 'Medir corrente total por fase. Conforme projeto.', requiresValue: true, referenceValue: 'Ver Projeto' },
   { id: '1.5', type: 'Quadro' as AssetType, label: 'Temperatura Máx. (Termografia)', description: 'Temperatura das conexões (Máx. 65ºC).', requiresValue: true, referenceValue: '65ºC' },
@@ -110,25 +112,33 @@ const ALL_CHECKLIST_ITEMS_TEMPLATE = [
   { id: '2.1', type: 'Soft-Starter' as AssetType, label: 'Display sem erros (E01, E04)?', description: 'Verificar se o display da Soft Starter não apresenta códigos de erro ativos.' },
   { id: '2.2', type: 'Soft-Starter' as AssetType, label: 'Corrente de Partida (Pico)', description: 'Medir corrente de pico na partida. (3x a 5x Nominal).', requiresValue: true, referenceValue: '3-5x Nom.' },
   { id: '2.3', type: 'Soft-Starter' as AssetType, label: 'Corrente em Regime (Bypass)', description: 'Medir corrente em regime. Deve ser igual à Nominal.', requiresValue: true, referenceValue: 'Nominal' },
-  { id: '2.4', type: 'Soft-Starter' as AssetType, label: 'Cooler operando normalmente?', description: 'Verificar se o ventilador de arrefecimento está operando sem ruídos ou obstruções.' },
+  { id: '2.3.1', type: 'Soft-Starter' as AssetType, label: 'Inspeção visual: conexões e cabos', description: 'Cabos de potência e controle estão bem fixados e sem deformações?' },
+  { id: '2.3.2', type: 'Soft-Starter' as AssetType, label: 'Limpeza do gabinete e entradas de ar', description: 'As grades de ventilação estão totalmente desobstruídas e o equipamento limpo?' },
+  { id: '2.4', type: 'Soft-Starter' as AssetType, label: 'Cooler operando normally?', description: 'Verificar se o ventilador de arrefecimento está operando sem ruídos ou obstruções.' },
   { id: '2.5', type: 'Soft-Starter' as AssetType, label: 'FOTO DO DISPLAY LIGADO', description: '📸 ADICIONAR FOTO DO DISPLAY LIGADO (Registro visual obrigatório).' },
 
   // 3. INVERSOR DE FREQUÊNCIA + MOTOR
   { id: '3.1', type: 'Inversor' as AssetType, label: 'Corrente de Saída (Display)', description: 'Verificar corrente no display. Deve ser menor que a Nominal.', requiresValue: true, referenceValue: '< Inom' },
   { id: '3.2', type: 'Inversor' as AssetType, label: 'Frequência de Operação', description: 'Geralmente entre 0-60 Hz.', requiresValue: true, referenceValue: '0-60 Hz' },
   { id: '3.3', type: 'Inversor' as AssetType, label: 'Tensão de Barramento CC (Bus)', description: 'Verificar tensão no barramento CC. Conforme manual.', requiresValue: true, referenceValue: 'Vcc Man.' },
+  { id: '3.3.1', type: 'Inversor' as AssetType, label: 'Inspeção visual de componentes internos', description: 'Sinais de estufamento de capacitores ou manchas na placa de controle?' },
+  { id: '3.3.2', type: 'Inversor' as AssetType, label: 'Estado de limpeza dos filtros/ventiladores', description: 'Garantir que não haja acúmulo de pó dificultando a refrigeração.' },
   { id: '3.4', type: 'Inversor' as AssetType, label: 'Dissipador de calor está limpo?', description: 'Verificar se as aletas do dissipador traseiro estão livres de poeira ou obstruções.' },
   { id: '3.5', type: 'Inversor' as AssetType, label: 'FOTO DOS BORNES/DISPLAY', description: '📸 ADICIONAR FOTO DOS BORNES/DISPLAY (Registro visual obrigatório).' },
 
   // 4. BOMBAS (PARTE ELÉTRICA)
   { id: '4.1', type: 'Bomba' as AssetType, label: 'Pressão de Recalque (Manômetro)', description: 'Conforme Curva da Bomba.', requiresValue: true, referenceValue: 'Curva Bomba' },
   { id: '4.2', type: 'Bomba' as AssetType, label: 'Pressão de Sucção', description: 'Evitar Cavitação.', requiresValue: true, referenceValue: '> 0 mca' },
+  { id: '4.2.1', type: 'Bomba' as AssetType, label: 'Verificação de vazamentos (Selos/Gaxetas)', description: 'Visualmente, há gotejamento excessivo ou poças próximo à bomba?' },
+  { id: '4.2.2', type: 'Bomba' as AssetType, label: 'Limpeza e estado de conservação da base', description: 'A base está limpa, firme e sem sinais de corrosão avançada?' },
   { id: '4.3', type: 'Bomba' as AssetType, label: 'Caixa de ligação vedada e seca?', description: 'Verificar se a caixa de bornes do motor da bomba está totalmente seca e vedada.' },
   { id: '4.4', type: 'Bomba' as AssetType, label: 'FOTO DA ENTRADA DE CABOS', description: '📸 ADICIONAR FOTO DA ENTRADA DE CABOS (PRENSA-CABOS) (Registro visual obrigatório).' },
 
   // 5. MOTORES
   { id: '5.1', type: 'Motor' as AssetType, label: 'Resistência de Isolação (Megômetro)', description: 'Desejável > 100 MΩ.', requiresValue: true, referenceValue: '> 100 MΩ' },
   { id: '5.2', type: 'Motor' as AssetType, label: 'Vibração (mm/s ou visual/auditivo)', description: 'Nível baixo/estável.', requiresValue: true, referenceValue: 'Baixo' },
+  { id: '5.2.1', type: 'Motor' as AssetType, label: 'Limpeza das aletas de refrigeração', description: 'Garantir que a carcaça do motor esteja livre de sujeira para troca térmica.' },
+  { id: '5.2.2', type: 'Motor' as AssetType, label: 'Inspeção visual: fiação e fixação', description: 'Cabos estão devidamente protegidos e o motor bem fixado à base?' },
   { id: '5.3', type: 'Motor' as AssetType, label: 'FOTO DA PLACA E CONEXÕES', description: '📸 ADICIONAR FOTO DA PLACA/CAIXA DE BORNES.' },
 ];
 
