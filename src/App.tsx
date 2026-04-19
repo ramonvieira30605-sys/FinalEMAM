@@ -89,7 +89,7 @@ import {
   Eye,
   Edit3
 } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
+import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -197,7 +197,7 @@ export default function App() {
   
   // New states for Reports
   const [reportTechnician, setReportTechnician] = useState('');
-  const [reportType, setReportType] = useState<'ativos' | 'auditoria' | 'checklist_geral' | 'comparativo_semanal' | 'checklist_diario'>('ativos');
+  const [reportType, setReportType] = useState<'ativos' | 'auditoria' | 'checklist_geral' | 'comparativo_semanal' | 'checklist_diario' | 'etiquetas_qr'>('ativos');
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
   // Checklist Wizard States
@@ -267,7 +267,8 @@ export default function App() {
             return {
               ...c,
               observations: c.items.observations || '',
-              items: migratedItems
+              items: migratedItems,
+              equipmentStatus: c.equipmentStatus || 'Operando'
             };
           }
           return c;
@@ -488,6 +489,84 @@ export default function App() {
     doc.save(`checklist-${asset.name.replace(/\s+/g, '-').toLowerCase()}-${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
+  const downloadQRCode = (assetId: string, assetName: string) => {
+    const canvas = document.getElementById(`qr-${assetId}`) as HTMLCanvasElement;
+    if (canvas) {
+      const url = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.download = `qrcode-${assetName.replace(/\s+/g, '-').toLowerCase()}.png`;
+      link.href = url;
+      link.click();
+    }
+  };
+
+  const downloadAllQRCodes = async () => {
+    const doc = new jsPDF();
+    doc.setFontSize(22);
+    doc.setTextColor(16, 185, 129);
+    doc.text('FOLHA DE ETIQUETAS - QR CODES', 105, 20, { align: 'center' });
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text('EMAM/ELT - GESTÃO TÉCNICA E MANUTENÇÃO', 105, 28, { align: 'center' });
+    doc.setDrawColor(200);
+    doc.line(20, 32, 190, 32);
+
+    let x = 15;
+    let y = 40;
+    const qrDim = 35;
+    const paddingX = 12;
+    const paddingY = 20;
+    const itemsPerRow = 4;
+
+    for (let i = 0; i < assets.length; i++) {
+        const asset = assets[i];
+        
+        // Find the pre-rendered canvas
+        const canvas = document.getElementById(`batch-qr-${asset.id}`) as HTMLCanvasElement;
+        if (canvas) {
+            const qrUrl = canvas.toDataURL('image/png');
+            
+            // Add to PDF
+            doc.addImage(qrUrl, 'PNG', x, y, qrDim, qrDim);
+            
+            // Labels
+            doc.setFontSize(7);
+            doc.setTextColor(50);
+            doc.text(asset.name.substring(0, 25), x + (qrDim/2), y + qrDim + 4, { align: 'center' });
+            doc.setFontSize(6);
+            doc.setTextColor(120);
+            doc.text(`SN: ${asset.serialNumber}`, x + (qrDim/2), y + qrDim + 8, { align: 'center' });
+
+            // Borders for cutting
+            doc.setDrawColor(240);
+            doc.rect(x - 2, y - 2, qrDim + 4, qrDim + 12);
+
+            // Move coordinates
+            if ((i + 1) % itemsPerRow === 0) {
+                x = 15;
+                y += qrDim + paddingY;
+            } else {
+                x += qrDim + paddingX;
+            }
+
+            // Page break
+            if ((i + 1) % 16 === 0 && i < assets.length - 1) {
+                doc.addPage();
+                x = 15;
+                y = 40;
+                doc.setFontSize(22);
+                doc.setTextColor(16, 185, 129);
+                doc.text('FOLHA DE ETIQUETAS - QR CODES', 105, 20, { align: 'center' });
+                doc.setDrawColor(200);
+                doc.line(20, 32, 190, 32);
+            }
+        }
+    }
+    
+    const dateStr = new Date().toISOString().split('T')[0];
+    doc.save(`ETIQUETAS-QR-CODE-EMAM-${dateStr}.pdf`);
+  };
+
   const readFileAsDataURL = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -659,6 +738,13 @@ export default function App() {
   const startChecklist = (assetOverride?: Asset) => {
     const asset = assetOverride || selectedAsset;
     if (!asset) return;
+    
+    // Reset wizard states
+    setCurrentChecklistStep(0);
+    setTempPhoto(null);
+    setNcDescription('');
+    setMeasuredValue('');
+    setInspectionEquipmentStatus('Operando');
     
     const items = ALL_CHECKLIST_ITEMS_TEMPLATE
       .filter(item => item.type === asset.type)
@@ -915,7 +1001,7 @@ export default function App() {
     doc.save(`EMAM_Relatorio_${asset.serialNumber}.pdf`);
   };
 
-  const generateGeneralReport = () => {
+  const generateGeneralReport = async () => {
     if (!reportTechnician.trim()) {
       alert('Por favor, informe o nome do responsável técnico.');
       return;
@@ -948,6 +1034,10 @@ export default function App() {
         theme: 'grid',
         headStyles: { fillColor: [16, 185, 129] },
       });
+    } else if (reportType === 'etiquetas_qr') {
+      await downloadAllQRCodes();
+      setIsGeneratingReport(false);
+      return;
     } else if (reportType === 'checklist_diario') {
       const today = new Date().toLocaleDateString('pt-BR');
       const todaysChecklists = checklists.filter(c => new Date(c.date).toLocaleDateString('pt-BR') === today);
@@ -1372,20 +1462,34 @@ export default function App() {
               {/* QR Code Section */}
               <div className="dark-card flex items-center gap-6 bg-white/5 border-zinc-800">
                 <div className="p-2 bg-white rounded-xl">
-                  <QRCodeSVG value={viewingAssetDetail.id} size={80} />
+                  {/* Utilizando Canvas para permitir o download da imagem */}
+                  <QRCodeCanvas 
+                    id={`qr-${viewingAssetDetail.id}`}
+                    value={viewingAssetDetail.id} 
+                    size={80} 
+                    level="H"
+                  />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 flex-1">
                   <h4 className="text-xs font-bold text-white uppercase tracking-tight">Identificação Digital</h4>
-                  <p className="text-[10px] text-zinc-500 leading-tight">Escaneie este código para acesso rápido aos parâmetros técnicos em campo.</p>
-                  <button 
-                    onClick={() => {
-                      navigator.clipboard.writeText(viewingAssetDetail.id);
-                      alert('ID do Ativo copiado!');
-                    }}
-                    className="text-[10px] font-bold text-emerald-500 flex items-center gap-1 hover:underline"
-                  >
-                    <Copy size={10} /> COPIAR ID
-                  </button>
+                  <p className="text-[10px] text-zinc-500 leading-tight">Gere a etiqueta para este ativo para identificação física em campo.</p>
+                  <div className="flex flex-wrap gap-3">
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(viewingAssetDetail.id);
+                        alert('ID do Ativo copiado!');
+                      }}
+                      className="text-[10px] font-bold text-zinc-500 flex items-center gap-1 hover:text-white transition-colors"
+                    >
+                      <Copy size={10} /> COPIAR ID
+                    </button>
+                    <button 
+                      onClick={() => downloadQRCode(viewingAssetDetail.id, viewingAssetDetail.name)}
+                      className="text-[10px] font-bold text-emerald-500 flex items-center gap-1 hover:underline"
+                    >
+                      <Download size={10} /> BAIXAR QR CODE
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1605,6 +1709,7 @@ export default function App() {
                         { id: 'checklist_geral', label: 'Histórico de Checklists', icon: <FileText size={16} /> },
                         { id: 'comparativo_semanal', label: 'Comparativo Semanal (Tendência)', icon: <Activity size={16} /> },
                         { id: 'auditoria', label: 'Auditoria de Sistema', icon: <Database size={16} /> },
+                        { id: 'etiquetas_qr', label: 'Etiquetas QR Code (Impressão)', icon: <QrCode size={16} /> },
                       ].map((type) => (
                       <button
                         key={type.id}
@@ -2808,6 +2913,21 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Hidden Container for Batch QR Code Generation */}
+      <div id="hidden-qr-container" style={{ position: 'fixed', top: '-10000px', left: '-10000px', visibility: 'hidden', pointerEvents: 'none' }}>
+        {assets.map(asset => (
+          <div key={asset.id} id={`batch-qr-wrapper-${asset.id}`}>
+            <QRCodeCanvas 
+              id={`batch-qr-${asset.id}`}
+              value={asset.id} 
+              size={300} 
+              level="H"
+              includeMargin={true}
+            />
+          </div>
+        ))}
+      </div>
 
     </div>
   );
