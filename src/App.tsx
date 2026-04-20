@@ -1330,59 +1330,113 @@ export default function App() {
         }
       });
     } else if (reportType === 'comparativo_semanal') {
-      // Logic for weekly comparison
-      const oneWeekAgo = new Date();
-      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-      
-      const recentChecklists = checklists.filter(c => new Date(c.date) >= oneWeekAgo);
-      const oldChecklists = checklists.filter(c => new Date(c.date) < oneWeekAgo);
+      const now = new Date();
+      const weekIntervals = [0, 1, 2, 3].map(w => {
+        const start = new Date(now);
+        start.setDate(now.getDate() - (w + 1) * 7);
+        const end = new Date(now);
+        end.setDate(now.getDate() - w * 7);
+        return { start, end };
+      }).reverse(); // From 4 weeks ago to this week
 
       doc.setFontSize(14);
-      doc.text('Análise de Tendência de Degradação Repentina', 14, 70);
+      doc.setFont('helvetica', 'bold');
+      doc.text('ANÁLISE DE TENDÊNCIA E EVOLUÇÃO DE FALHAS (4 SEMANAS)', 14, 70);
       doc.setFontSize(10);
-      doc.text(`Monitoramento Preditivo: ${oneWeekAgo.toLocaleDateString('pt-BR')} até ${dateStr}`, 14, 78);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Período de Monitoramento: ${weekIntervals[0].start.toLocaleDateString('pt-BR')} até ${dateStr}`, 14, 78);
 
       const comparisonData = assets.map(asset => {
-        const recent = recentChecklists.filter(c => c.assetId === asset.id);
-        const old = oldChecklists.filter(c => c.assetId === asset.id);
-        
-        const recentAlerts = recent.filter(c => {
-          return c.items.some(i => i.status === 'NC');
-        }).length;
+        const weeklyNCs = weekIntervals.map(interval => {
+          const checks = checklists.filter(c => 
+            c.assetId === asset.id && 
+            new Date(c.date) >= interval.start && 
+            new Date(c.date) < interval.end
+          );
+          return checks.reduce((count, c) => count + c.items.filter(i => i.status === 'NC').length, 0);
+        });
 
-        const oldAlerts = old.filter(c => {
-          return c.items.some(i => i.status === 'NC');
-        }).length;
+        const recentAlerts = weeklyNCs[3];
+        const prevAlerts = weeklyNCs[2];
 
-        let trend = 'Estável / Controlada';
-        let color = [100, 100, 100];
-        if (recentAlerts > oldAlerts) {
-          trend = 'Alerta de Degradação';
-          color = [220, 38, 38];
-        }
-        if (recentAlerts < oldAlerts && oldAlerts > 0) {
-          trend = 'Efetividade Preventiva';
-          color = [16, 185, 129];
-        }
+        let trendDescription = 'Estável';
+        if (recentAlerts > prevAlerts) trendDescription = 'DEGRADAÇÃO ↑';
+        else if (recentAlerts < prevAlerts && prevAlerts > 0) trendDescription = 'MELHORIA ↓';
 
-        return [asset.name, asset.status, oldAlerts, recentAlerts, trend];
+        return [
+          asset.name, 
+          asset.status.toUpperCase(), 
+          prevAlerts, 
+          recentAlerts, 
+          trendDescription, 
+          weeklyNCs // This will be used for drawing
+        ];
       });
 
       autoTable(doc, {
         startY: 85,
-        head: [['Ativo Industrial', 'Status Atual', 'Falhas (Sem. Ant.)', 'Falhas (Esta Sem.)', 'Diagnóstico de Tendência']],
-        body: comparisonData,
+        head: [['Ativo Industrial', 'Status', 'Falhas (S-1)', 'Falhas (Atual)', 'Evolução', 'Tendência (4 Sem.)']],
+        body: comparisonData as any,
         theme: 'grid',
         headStyles: { fillColor: [63, 63, 70] },
-        styles: { fontSize: 8 },
+        styles: { fontSize: 8, cellPadding: 3 },
+        columnStyles: {
+          5: { cellWidth: 35 } // Width for the graph
+        },
         didParseCell: (data) => {
           if (data.row.section === 'body' && data.column.index === 4) {
-             const val = data.cell.raw as string;
-             if (val === 'Alerta de Degradação') data.cell.styles.textColor = [220, 38, 38];
-             if (val === 'Efetividade Preventiva') data.cell.styles.textColor = [16, 185, 129];
+            const val = data.cell.raw as string;
+            if (val === 'DEGRADAÇÃO ↑') data.cell.styles.textColor = [220, 38, 38];
+            if (val === 'MELHORIA ↓') data.cell.styles.textColor = [16, 185, 129];
+          }
+          if (data.row.section === 'body' && data.column.index === 5) {
+            data.cell.text = []; // Clear text for drawing area
+          }
+        },
+        didDrawCell: (data) => {
+          if (data.row.section === 'body' && data.column.index === 5) {
+            const counts = data.cell.raw as number[];
+            if (!counts || !Array.isArray(counts)) return;
+
+            const { x, y, width, height } = data.cell;
+            const padding = 4;
+            const chartX = x + padding;
+            const chartY = y + padding;
+            const chartW = width - (padding * 2);
+            const chartH = height - (padding * 2);
+
+            const maxNC = Math.max(...counts, 1);
+            const stepX = chartW / (counts.length - 1);
+
+            doc.setDrawColor(100, 116, 139); // slater-500
+            doc.setLineWidth(0.3);
+
+            counts.forEach((count, i) => {
+              const curX = chartX + (i * stepX);
+              const curY = (chartY + chartH) - ((count / maxNC) * chartH);
+
+              if (i > 0) {
+                const prevX = chartX + ((i - 1) * stepX);
+                const prevY = (chartY + chartH) - ((counts[i - 1] / maxNC) * chartH);
+                doc.line(prevX, prevY, curX, curY);
+              }
+
+              // Draw point
+              if (count > 0) {
+                if (count > 2) doc.setFillColor(220, 38, 38);
+                else doc.setFillColor(245, 158, 11);
+              } else {
+                doc.setFillColor(16, 185, 129);
+              }
+              doc.circle(curX, curY, 0.6, 'F');
+            });
           }
         }
       });
+      
+      doc.setFontSize(8);
+      doc.setTextColor(120);
+      doc.text('O gráfico de tendência representa o volume de não-conformidades detectadas nas últimas 4 semanas sucessivas.', 14, (doc as any).lastAutoTable.finalY + 10);
     } else if (reportType === 'auditoria') {
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
