@@ -93,7 +93,7 @@ import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as pdfjsLib from 'pdfjs-dist';
-import { Asset, AssetStatus, AssetType, Checklist, ChecklistItem, KnowledgeBaseDoc } from './types';
+import { Asset, AppNotification, AssetStatus, AssetType, Checklist, ChecklistItem, KnowledgeBaseDoc } from './types';
 
 // --- Constants ---
 
@@ -155,9 +155,9 @@ try {
 const StatusBadge = ({ status }: { status: AssetStatus }) => {
   const colors = {
     'Operacional': 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
-    'Alerta': 'bg-amber-500/10 text-amber-500 border-amber-500/20',
+    'Alerta': 'bg-amber-500/10 text-amber-500 border-amber-500/20 shadow-lg shadow-amber-500/5',
     'Manutenção': 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-    'Crítico': 'bg-red-500/10 text-red-500 border-red-500/20',
+    'Crítico': 'bg-red-500/10 text-red-500 border-red-500/20 shadow-lg shadow-red-500/5',
   };
 
   const icons = {
@@ -167,18 +167,36 @@ const StatusBadge = ({ status }: { status: AssetStatus }) => {
     'Crítico': <XCircle size={12} />,
   };
 
+  const isWarning = status === 'Crítico' || status === 'Alerta';
+
   return (
-    <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${colors[status]}`}>
-      {icons[status]}
-      {status}
-    </span>
+    <motion.span 
+      animate={isWarning ? { 
+        scale: [1, 1.05, 1],
+      } : {}}
+      transition={isWarning ? { 
+        duration: 2, 
+        repeat: Infinity,
+        ease: "easeInOut"
+      } : {}}
+      className={`flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-bold border ${colors[status]}`}
+    >
+      <motion.div
+        animate={isWarning ? { opacity: [1, 0.5, 1] } : {}}
+        transition={isWarning ? { duration: 1.5, repeat: Infinity } : {}}
+      >
+        {icons[status]}
+      </motion.div>
+      {status.toUpperCase()}
+    </motion.span>
   );
 };
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'inventory' | 'guide' | 'knowledge' | 'reports'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'inventory' | 'guide' | 'knowledge' | 'reports' | 'alerts'>('dashboard');
   const [viewingAssetDetail, setViewingAssetDetail] = useState<Asset | null>(null);
   const [assets, setAssets] = useState<Asset[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const [isGuideInModalOpen, setIsGuideInModalOpen] = useState(false);
@@ -290,6 +308,9 @@ export default function App() {
         
         const savedKnowledge = localStorage.getItem('emam_knowledge');
         if (savedKnowledge) setKnowledgeBase(JSON.parse(savedKnowledge));
+
+        const savedNotifications = localStorage.getItem('emam_notifications');
+        if (savedNotifications) setNotifications(JSON.parse(savedNotifications));
       } catch (e) {
         console.error('Failed to parse local storage', e);
       } finally {
@@ -317,7 +338,8 @@ export default function App() {
     total: assets.length,
     operational: assets.filter(a => a.status === 'Operacional').length,
     alerts: assets.filter(a => a.status !== 'Operacional').length,
-  }), [assets]);
+    unreadNotifications: notifications.filter(n => !n.read).length
+  }), [assets, notifications]);
 
   const generatePDF = (checklist: Checklist, asset: Asset) => {
     const doc = new jsPDF();
@@ -630,8 +652,9 @@ export default function App() {
       localStorage.setItem('emam_assets', JSON.stringify(assets));
       localStorage.setItem('emam_checklists', JSON.stringify(checklists));
       localStorage.setItem('emam_knowledge', JSON.stringify(knowledgeBase));
+      localStorage.setItem('emam_notifications', JSON.stringify(notifications));
     }
-  }, [assets, checklists, knowledgeBase, isLoadingData]);
+  }, [assets, checklists, knowledgeBase, notifications, isLoadingData]);
 
   const exportData = () => {
     const data = {
@@ -725,7 +748,29 @@ export default function App() {
       }
     };
     setAssets(prev => [newAsset, ...prev]);
+    
+    // Notify on initial alert/critical status
+    if (newAsset.status === 'Alerta' || newAsset.status === 'Crítico') {
+      addNotification({
+        type: 'status_change',
+        assetId: newAsset.id,
+        assetName: newAsset.name,
+        severity: newAsset.status as any,
+        message: `Ativo cadastrado com status ${newAsset.status.toUpperCase()}.`
+      });
+    }
+    
     setIsModalOpen(false);
+  };
+
+  const addNotification = (notif: Omit<AppNotification, 'id' | 'date' | 'read'>) => {
+    const newNotif: AppNotification = {
+      ...notif,
+      id: crypto.randomUUID(),
+      date: new Date().toISOString(),
+      read: false
+    };
+    setNotifications(prev => [newNotif, ...prev]);
   };
 
   const handleDeleteAsset = (id: string) => {
@@ -879,6 +924,78 @@ export default function App() {
     summary += `\n--- FIM DO RELATÓRIO ---`;
 
     setChecklistSummary(summary);
+    // Notifications for deviations or status impact
+    let newStatus: AssetStatus = 'Operacional';
+    let hasNC = false;
+    let hasDeviation = false;
+
+    finalItems.forEach(item => {
+      if (item.status === 'NC') {
+        hasNC = true;
+        addNotification({
+          type: 'deviation',
+          assetId: selectedAsset.id,
+          assetName: selectedAsset.name,
+          severity: 'Crítico',
+          message: `Não conformidade detectada: ${item.label}. ${item.ncDescription || ''}`
+        });
+      }
+      
+      // Simple value range check (Basic implementation)
+      if (item.measuredValue && item.referenceValue) {
+        // Handle "> X" or "< X"
+        const cleanMeasured = parseFloat(item.measuredValue.replace(/[^0-9.]/g, ''));
+        const refValue = item.referenceValue;
+        
+        if (!isNaN(cleanMeasured)) {
+          if (refValue.startsWith('>')) {
+            const threshold = parseFloat(refValue.replace('>', '').trim());
+            if (cleanMeasured <= threshold) {
+              hasDeviation = true;
+              addNotification({
+                type: 'deviation',
+                assetId: selectedAsset.id,
+                assetName: selectedAsset.name,
+                severity: 'Alerta',
+                message: `Parâmetro insuficiente: ${item.label} (${item.measuredValue}). Ref: ${refValue}`
+              });
+            }
+          } else if (refValue.startsWith('<')) {
+             const threshold = parseFloat(refValue.replace('<', '').trim());
+             if (cleanMeasured >= threshold) {
+               hasDeviation = true;
+               addNotification({
+                 type: 'deviation',
+                 assetId: selectedAsset.id,
+                 assetName: selectedAsset.name,
+                 severity: 'Alerta',
+                 message: `Parâmetro excessivo: ${item.label} (${item.measuredValue}). Ref: ${refValue}`
+               });
+             }
+          }
+        }
+      }
+    });
+
+    if (hasNC) newStatus = 'Crítico';
+    else if (hasDeviation) newStatus = 'Alerta';
+
+    // Update asset status if changed
+    if (newStatus !== selectedAsset.status) {
+      setAssets(prev => prev.map(a => a.id === selectedAsset.id ? { ...a, status: newStatus, lastUpdated: new Date().toISOString() } : a));
+      
+      // Notify status change if it becomes critical/alert
+      if (newStatus === 'Alerta' || newStatus === 'Crítico') {
+        addNotification({
+          type: 'status_change',
+          assetId: selectedAsset.id,
+          assetName: selectedAsset.name,
+          severity: newStatus as any,
+          message: `Status do ativo alterado para ${newStatus.toUpperCase()} após inspeção.`
+        });
+      }
+    }
+
     setChecklists(prev => [newChecklist, ...prev]);
     setIsChecklistStarted(false);
   };
@@ -1027,13 +1144,39 @@ export default function App() {
     doc.text(`Data de Emissão: ${dateStr} ${now.toLocaleTimeString('pt-BR')}`, 14, 55);
 
     if (reportType === 'ativos') {
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('INVENTÁRIO GERENCIAL E STATUS TÉCNICO DE ATIVOS', 14, 65);
+      
       autoTable(doc, {
-        startY: 65,
-        head: [['Nome', 'Tipo', 'Modelo', 'Série', 'Local', 'Status']],
-        body: assets.map(a => [a.name, a.type, a.model, a.serialNumber, a.location, a.status]),
+        startY: 75,
+        head: [['TAG/Equipamento', 'Classe/Tipo', 'Modelo Técnico', 'Nº de Série', 'Setor/Local', 'Condição Atual']],
+        body: assets.map(a => [
+          a.name, 
+          a.type, 
+          a.model, 
+          a.serialNumber, 
+          a.location, 
+          a.status.toUpperCase()
+        ]),
         theme: 'grid',
-        headStyles: { fillColor: [16, 185, 129] },
+        headStyles: { fillColor: [63, 63, 70] },
+        styles: { fontSize: 8 },
+        didParseCell: (data) => {
+          if (data.row.section === 'body' && data.column.index === 5) {
+            const val = data.cell.raw as string;
+            if (val === 'CRÍTICO') data.cell.styles.textColor = [220, 38, 38];
+            if (val === 'ALERTA') data.cell.styles.textColor = [245, 158, 11];
+            if (val === 'OPERACIONAL') data.cell.styles.textColor = [16, 185, 129];
+          }
+        }
       });
+
+      const totalValue = assets.length;
+      const critical = assets.filter(a => a.status === 'Crítico').length;
+      doc.setFontSize(9);
+      doc.setTextColor(100);
+      doc.text(`Resumo do Ativo: Ativos Totais: ${totalValue} | Críticos: ${critical} | Alerta: ${assets.filter(a => a.status === 'Alerta').length}`, 14, (doc as any).lastAutoTable.finalY + 10);
     } else if (reportType === 'etiquetas_qr') {
       await downloadAllQRCodes();
       setIsGeneratingReport(false);
@@ -1049,9 +1192,11 @@ export default function App() {
       }
 
       doc.setFontSize(14);
-      doc.text('Relatório Técnico Consolidado Diário', 14, 70);
+      doc.setFont('helvetica', 'bold');
+      doc.text('CONSOLIDADO TÉCNICO OPERACIONAL - INSPEÇÕES DIÁRIAS', 14, 70);
       doc.setFontSize(10);
-      doc.text(`Total de Inspeções: ${todaysChecklists.length}`, 14, 78);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Volume de Inspeções Processadas: ${todaysChecklists.length} unidades`, 14, 78);
 
       let currentY = 85;
 
@@ -1067,7 +1212,7 @@ export default function App() {
         doc.rect(14, currentY, 182, 8, 'F');
         doc.setFontSize(10);
         doc.setFont('helvetica', 'bold');
-        doc.text(`${index + 1}. ATIVO: ${asset?.name || 'Desconhecido'} (${asset?.type || '-'})`, 16, currentY + 6);
+        doc.text(`${index + 1}. TAG: ${asset?.name || 'Desconhecido'} | TIPO: ${asset?.type || '-'}`, 16, currentY + 6);
         doc.setFont('helvetica', 'normal');
         
         currentY += 10;
@@ -1076,7 +1221,7 @@ export default function App() {
         if (asset) {
           doc.setFontSize(8);
           doc.setTextColor(100);
-          doc.text(`SÉRIE: ${asset.serialNumber} | MODELO: ${asset.model} | LOCAL: ${asset.location}`, 16, currentY);
+          doc.text(`SÉRIE: ${asset.serialNumber} | MODELO: ${asset.model} | LOCALIZAÇÃO: ${asset.location}`, 16, currentY);
           
           // Adicionar Status do Equipamento no checklist
           const status = c.equipmentStatus || 'N/A';
@@ -1085,7 +1230,7 @@ export default function App() {
           else if (status === 'Parado') doc.setTextColor(220, 38, 38);
           else doc.setTextColor(100);
           
-          doc.text(`ESTADO: ${status.toUpperCase()}`, 196, currentY, { align: 'right' });
+          doc.text(`DISPONIBILIDADE: ${status.toUpperCase()}`, 196, currentY, { align: 'right' });
           
           doc.setFont('helvetica', 'normal');
           doc.setTextColor(0);
@@ -1094,7 +1239,7 @@ export default function App() {
 
         autoTable(doc, {
           startY: currentY,
-          head: [['Item', 'Status', 'Valor / Ref.', 'Observação']],
+          head: [['Item de Inspeção', 'Status', 'Medição / Ref.', 'Diagnóstico Técnico']],
           body: c.items.map(i => [
             i.label,
             i.status === 'C' ? 'CONFORME' : i.status === 'NC' ? '[!] NÃO CONFORME' : 'N/A',
@@ -1148,32 +1293,38 @@ export default function App() {
       }, { c: 0, nc: 0, na: 0 });
 
       doc.setFontSize(12);
-      doc.text('Resumo de Conformidade Geral:', 14, 70);
+      doc.setFont('helvetica', 'bold');
+      doc.text('ANÁLISE ANALÍTICA DE INDICADORES DE CONFORMIDADE:', 14, 70);
       doc.setFontSize(10);
-      doc.text(`Total Conforme: ${totalCounts.c} | Total Não Conforme: ${totalCounts.nc} | Total N/A: ${totalCounts.na}`, 14, 78);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Aderência Normativa: ${((totalCounts.c / (totalCounts.c + totalCounts.nc || 1)) * 100).toFixed(1)}%`, 14, 78);
+      doc.text(`Total Conforme: ${totalCounts.c} | Não Conformidades (Críticas): ${totalCounts.nc} | Itens N/A: ${totalCounts.na}`, 14, 83);
 
       autoTable(doc, {
-        startY: 85,
-        head: [['Data', 'Ativo', 'Técnico', 'Status dos Itens']],
+        startY: 90,
+        head: [['Data/Hora', 'Equipamento', 'Responsável', 'Estado', 'Pendências Críticas']],
         body: checklists.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(c => {
           const asset = assets.find(a => a.id === c.assetId);
           const items = c.items as ChecklistItem[];
-          const statusSummary = items.map(i => `${i.id}: ${i.status === 'NC' ? '[!] ' : ''}${i.status}`).join(' | ');
+          const ncItems = items.filter(i => i.status === 'NC').map(i => i.label).join(', ');
           
           return [
-            new Date(c.date).toLocaleDateString('pt-BR'),
+            new Date(c.date).toLocaleString('pt-BR'),
             asset?.name || 'N/A',
             c.technician,
-            statusSummary
+            c.equipmentStatus || 'N/A',
+            ncItems || 'Nenhuma'
           ];
         }),
         theme: 'grid',
-        headStyles: { fillColor: [16, 185, 129] },
+        headStyles: { fillColor: [63, 63, 70] },
+        styles: { fontSize: 8 },
         didParseCell: (data) => {
-          if (data.row.section === 'body' && data.column.index === 3) {
+          if (data.row.section === 'body' && data.column.index === 4) {
             const val = data.cell.raw as string;
-            if (val && val.includes('[!]')) {
+            if (val && val !== 'Nenhuma') {
               data.cell.styles.textColor = [220, 38, 38];
+              data.cell.styles.fontStyle = 'bold';
             }
           }
         }
@@ -1187,9 +1338,9 @@ export default function App() {
       const oldChecklists = checklists.filter(c => new Date(c.date) < oneWeekAgo);
 
       doc.setFontSize(14);
-      doc.text('Análise de Tendência Semanal', 14, 70);
+      doc.text('Análise de Tendência de Degradação Repentina', 14, 70);
       doc.setFontSize(10);
-      doc.text(`Período: ${oneWeekAgo.toLocaleDateString('pt-BR')} até ${dateStr}`, 14, 78);
+      doc.text(`Monitoramento Preditivo: ${oneWeekAgo.toLocaleDateString('pt-BR')} até ${dateStr}`, 14, 78);
 
       const comparisonData = assets.map(asset => {
         const recent = recentChecklists.filter(c => c.assetId === asset.id);
@@ -1203,23 +1354,39 @@ export default function App() {
           return c.items.some(i => i.status === 'NC');
         }).length;
 
-        let trend = 'Estável';
-        if (recentAlerts > oldAlerts) trend = 'Piora';
-        if (recentAlerts < oldAlerts && oldAlerts > 0) trend = 'Melhora';
+        let trend = 'Estável / Controlada';
+        let color = [100, 100, 100];
+        if (recentAlerts > oldAlerts) {
+          trend = 'Alerta de Degradação';
+          color = [220, 38, 38];
+        }
+        if (recentAlerts < oldAlerts && oldAlerts > 0) {
+          trend = 'Efetividade Preventiva';
+          color = [16, 185, 129];
+        }
 
         return [asset.name, asset.status, oldAlerts, recentAlerts, trend];
       });
 
       autoTable(doc, {
         startY: 85,
-        head: [['Ativo', 'Status Atual', 'Alertas (Sem. Ant.)', 'Alertas (Esta Sem.)', 'Tendência']],
+        head: [['Ativo Industrial', 'Status Atual', 'Falhas (Sem. Ant.)', 'Falhas (Esta Sem.)', 'Diagnóstico de Tendência']],
         body: comparisonData,
-        theme: 'striped',
-        headStyles: { fillColor: [16, 185, 129] },
+        theme: 'grid',
+        headStyles: { fillColor: [63, 63, 70] },
+        styles: { fontSize: 8 },
+        didParseCell: (data) => {
+          if (data.row.section === 'body' && data.column.index === 4) {
+             const val = data.cell.raw as string;
+             if (val === 'Alerta de Degradação') data.cell.styles.textColor = [220, 38, 38];
+             if (val === 'Efetividade Preventiva') data.cell.styles.textColor = [16, 185, 129];
+          }
+        }
       });
     } else if (reportType === 'auditoria') {
-      doc.setFontSize(12);
-      doc.text('Resumo de Auditoria de Sistema', 14, 70);
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('AUDITORIA CORPORATIVA DE GOVERNANÇA E DISPONIBILIDADE', 14, 70);
       
       const allItems = checklists.flatMap(c => c.items as ChecklistItem[]);
       const totalCounts = allItems.reduce((acc, item) => {
@@ -1233,24 +1400,36 @@ export default function App() {
         totalAssets: assets.length,
         totalChecklists: checklists.length,
         criticalAssets: assets.filter(a => a.status === 'Crítico').length,
+        alertAssets: assets.filter(a => a.status === 'Alerta').length,
+        complianceRate: ((totalCounts.c / (totalCounts.c + totalCounts.nc || 1)) * 100).toFixed(1) + '%',
         docsInKb: knowledgeBase.length,
+        activeAlerts: notifications.filter(n => !n.read).length
       };
 
       autoTable(doc, {
-        startY: 80,
-        head: [['Métrica', 'Valor']],
+        startY: 85,
+        head: [['Indicador de Performance (KPI)', 'Métrica Industrial']],
         body: [
-          ['Total de Ativos Cadastrados', stats.totalAssets],
-          ['Total de Checklists Realizados', stats.totalChecklists],
-          ['Ativos em Estado Crítico', stats.criticalAssets],
-          ['Total de Itens Conformes', totalCounts.c],
-          ['Total de Itens Não Conformes', totalCounts.nc],
-          ['Total de Itens N/A', totalCounts.na],
-          ['Documentos na Base de Conhecimento', stats.docsInKb],
-          ['Modo de Operação', 'Local/Offline (Backup Manual)'],
+          ['Total de Ativos sob Gestão', stats.totalAssets],
+          ['Ativos em Operação Crítica (Intervenção Imediata)', stats.criticalAssets],
+          ['Ativos em Regime de Alerta (Preventiva Recomendada)', stats.alertAssets],
+          ['Volume Total de Inspeções Técnicas', stats.totalChecklists],
+          ['Taxa de Aderência à Conformidade Global', stats.complianceRate],
+          ['Base de Conhecimento Técnico (SOP/Manuais)', stats.docsInKb],
+          ['Anomalias/Desvios Não Solucionados', stats.activeAlerts],
+          ['Confiabilidade do Log de Eventos', 'Alta / Auditável'],
+          ['Status da Auditoria', 'CONCLUÍDO'],
+          ['Assinatura Digital / Responsável', reportTechnician]
         ],
         theme: 'grid',
+        headStyles: { fillColor: [63, 63, 70] },
+        styles: { fontSize: 9 }
       });
+
+      doc.setFontSize(8);
+      doc.setTextColor(150);
+      doc.setFont('helvetica', 'italic');
+      doc.text('Este documento constitui evidência técnica para auditorias de manutenção corretiva, preditiva e processos de garantia de qualidade (ISO 9001/45001/55001).', 14, (doc as any).lastAutoTable.finalY + 12);
     }
 
     doc.save(`EMAM_Relatorio_${reportType}_${dateStr.replace(/\//g, '-')}.pdf`);
@@ -1704,12 +1883,12 @@ export default function App() {
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Tipo de Relatório</label>
                   <div className="grid grid-cols-1 gap-2">
                       {[
-                        { id: 'ativos', label: 'Inventário de Ativos', icon: <Package size={16} /> },
-                        { id: 'checklist_diario', label: 'Relatório Técnico Diário (Consolidado)', icon: <ShieldCheck size={16} /> },
-                        { id: 'checklist_geral', label: 'Histórico de Checklists', icon: <FileText size={16} /> },
-                        { id: 'comparativo_semanal', label: 'Comparativo Semanal (Tendência)', icon: <Activity size={16} /> },
-                        { id: 'auditoria', label: 'Auditoria de Sistema', icon: <Database size={16} /> },
-                        { id: 'etiquetas_qr', label: 'Etiquetas QR Code (Impressão)', icon: <QrCode size={16} /> },
+                        { id: 'ativos', label: 'Inventário Gerencial de Ativos', icon: <Package size={16} /> },
+                        { id: 'checklist_diario', label: 'Consolidado Técnico de Inspeções Diárias', icon: <ShieldCheck size={16} /> },
+                        { id: 'checklist_geral', label: 'Relatório Analítico de Manutenções (Histórico)', icon: <FileText size={16} /> },
+                        { id: 'comparativo_semanal', label: 'Análise de Tendência e Confiabilidade Preditiva', icon: <Activity size={16} /> },
+                        { id: 'auditoria', label: 'Auditoria Gerencial de Governança e Disponibilidade', icon: <Database size={16} /> },
+                        { id: 'etiquetas_qr', label: 'Emissão de Etiquetas de Identificação QR', icon: <QrCode size={16} /> },
                       ].map((type) => (
                       <button
                         key={type.id}
@@ -1877,6 +2056,89 @@ export default function App() {
             </motion.div>
           )}
 
+          {/* Alertas / Notificações */}
+          {activeTab === 'alerts' && (
+            <motion.div 
+              key="alerts"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="space-y-6"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold text-white tracking-tight">Alertas do Sistema</h2>
+                  <p className="text-zinc-500 text-sm">Monitoramento de Segurança e Performance</p>
+                </div>
+                <button 
+                  onClick={() => setNotifications(prev => prev.map(n => ({ ...n, read: true })))}
+                  className="text-[10px] font-bold text-zinc-500 hover:text-emerald-500 transition-colors uppercase tracking-widest"
+                >
+                  Marcar todas como lidas
+                </button>
+              </div>
+
+              <div className="space-y-3 pb-8">
+                <AnimatePresence initial={false}>
+                {notifications.length === 0 ? (
+                  <motion.div 
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="text-center py-20 border border-zinc-900 border-dashed rounded-3xl"
+                  >
+                    <ShieldCheck className="mx-auto text-zinc-800 mb-4" size={48} />
+                    <h3 className="text-white font-bold mb-1">Sistema Íntegro</h3>
+                    <p className="text-zinc-600 text-xs">Nenhum desvio crítico ou alerta detectado.</p>
+                  </motion.div>
+                ) : (
+                  notifications.map(notification => (
+                    <motion.div 
+                      layout
+                      key={notification.id}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      className={`dark-card flex flex-col gap-3 transition-all relative overflow-hidden ${notification.read ? 'opacity-60 bg-zinc-900/30' : 'bg-zinc-900/60 border-zinc-700/50'}`}
+                      onClick={() => setNotifications(prev => prev.map(n => n.id === notification.id ? { ...n, read: true } : n))}
+                    >
+                      {!notification.read && <div className="absolute top-0 right-0 w-1 h-full bg-emerald-500" />}
+                      
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-4">
+                          <div className={`mt-1 p-2 rounded-xl border ${notification.severity === 'Crítico' ? 'bg-red-500/10 border-red-500/20 text-red-500' : 'bg-orange-500/10 border-orange-500/20 text-orange-500'}`}>
+                            {notification.type === 'deviation' ? <Activity size={18} /> : <Zap size={18} />}
+                          </div>
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-black text-white">{notification.assetName}</span>
+                              <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-tighter ${notification.severity === 'Crítico' ? 'bg-red-500/10 text-red-500 border border-red-500/20' : 'bg-orange-500/10 text-orange-500 border border-orange-500/20'}`}>
+                                {notification.severity}
+                              </span>
+                            </div>
+                            <p className="text-xs text-zinc-300 leading-relaxed">{notification.message}</p>
+                            <p className="text-[9px] text-zinc-500 font-medium">
+                              {new Date(notification.date).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                          </div>
+                        </div>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setNotifications(prev => prev.filter(n => n.id !== notification.id));
+                          }}
+                          className="p-2 text-zinc-700 hover:text-white transition-colors"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    </motion.div>
+                  ))
+                )}
+                </AnimatePresence>
+              </div>
+            </motion.div>
+          )}
+
           {/* Knowledge Base */}
           {activeTab === 'knowledge' && (
             <motion.div 
@@ -2008,6 +2270,18 @@ export default function App() {
         >
           <FileText size={20} />
           <span className="text-[10px] font-bold">Relatórios</span>
+        </button>
+        <button 
+          onClick={() => setActiveTab('alerts')}
+          className={`relative flex flex-col items-center gap-1 transition-colors ${activeTab === 'alerts' ? 'text-emerald-500' : 'text-zinc-600'}`}
+        >
+          <AlertCircle size={20} />
+          {stats.unreadNotifications > 0 && (
+            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white shadow-lg">
+              {stats.unreadNotifications}
+            </span>
+          )}
+          <span className="text-[10px] font-bold">Alertas</span>
         </button>
       </nav>
 
@@ -2445,168 +2719,182 @@ export default function App() {
                     )}
                     <div className="flex-1 flex gap-1 h-1">
                       {checklistItems.map((_, idx) => (
-                        <div 
+                        <motion.div 
                           key={idx} 
-                          className={`flex-1 rounded-full transition-all ${idx <= currentChecklistStep ? 'bg-emerald-500' : 'bg-zinc-800'}`} 
+                          initial={false}
+                          animate={{ 
+                            backgroundColor: idx <= currentChecklistStep ? '#10b981' : '#27272a',
+                            scaleY: idx === currentChecklistStep ? [1, 1.5, 1] : 1
+                          }}
+                          className="flex-1 rounded-full h-full" 
                         />
                       ))}
                     </div>
                   </div>
 
-                  <div className="space-y-4">
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Item {checklistItems[currentChecklistStep].id}</span>
-                      <h4 className="text-lg font-bold leading-tight">{checklistItems[currentChecklistStep].label}</h4>
-                      <p className="text-xs text-zinc-400">{checklistItems[currentChecklistStep].description}</p>
-                    </div>
-
-                    {/* Measured Value Input */}
-                    {checklistItems[currentChecklistStep].requiresValue && (
-                      <div className="space-y-2 p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-2xl">
-                        <div className="flex justify-between items-center">
-                          <label className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Valor de Medição / Grandeza</label>
-                          <span className="text-[8px] font-bold text-zinc-500 uppercase">Ref: {checklistItems[currentChecklistStep].referenceValue}</span>
-                        </div>
-                        <input 
-                          type="text"
-                          value={measuredValue}
-                          onChange={(e) => setMeasuredValue(e.target.value)}
-                          placeholder="Ex: 380V, 12.5A, 45ºC..."
-                          className="w-full bg-black border border-zinc-800 rounded-xl py-3 px-4 text-sm text-white focus:outline-none focus:border-emerald-500 font-mono"
-                        />
-                        <p className="text-[9px] text-zinc-500 italic leading-tight">Insira o valor real encontrado em campo para este equipamento.</p>
+                  <AnimatePresence mode="wait">
+                    <motion.div 
+                      key={currentChecklistStep}
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -20 }}
+                      transition={{ duration: 0.2 }}
+                      className="space-y-4"
+                    >
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Item {checklistItems[currentChecklistStep].id}</span>
+                        <h4 className="text-lg font-bold leading-tight">{checklistItems[currentChecklistStep].label}</h4>
+                        <p className="text-xs text-zinc-400">{checklistItems[currentChecklistStep].description}</p>
                       </div>
-                    )}
 
-                    {/* Photo Upload Area */}
-                    <div className="space-y-3">
-                      <div className="flex justify-between items-center">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-                          {(checklistItems[currentChecklistStep].label.toUpperCase().includes('FOTO') || 
-                            checklistItems[currentChecklistStep].description.includes('📸')) 
-                            ? 'Foto Obrigatória' 
-                            : 'Foto (Opcional)'}
-                        </label>
-                        {tempPhoto && (
-                          <span className="text-[10px] font-bold text-emerald-500 uppercase flex items-center gap-1">
-                            <CheckCircle2 size={10} /> Foto Capturada
-                          </span>
-                        )}
-                      </div>
-                      
-                      <div className="relative aspect-video bg-black border-2 border-dashed border-zinc-800 rounded-2xl overflow-hidden flex flex-col items-center justify-center gap-3">
-                        {tempPhoto ? (
-                          <>
-                            <img src={tempPhoto} alt="Preview" className="w-full h-full object-cover" />
-                            <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center">
-                              <button 
-                                onClick={() => setTempPhoto(null)}
-                                className="bg-red-500 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 active:scale-95 transition-transform"
-                              >
-                                <Trash2 size={14} /> REMOVER E TIRAR OUTRA
-                              </button>
-                            </div>
-                          </>
-                        ) : (
-                          <div className="grid grid-cols-2 gap-4 w-full p-4 h-full">
-                            <label className="flex flex-col items-center justify-center bg-zinc-900/50 border border-zinc-800 rounded-2xl cursor-pointer active:scale-95 transition-all hover:bg-emerald-500/5 hover:border-emerald-500/20 group">
-                              <Camera size={28} className="text-emerald-500 mb-2 group-hover:scale-110 transition-transform" />
-                              <span className="text-[10px] font-black text-zinc-400 uppercase tracking-tighter">Câmera</span>
-                              <input 
-                                type="file" 
-                                accept="image/*" 
-                                capture="environment" 
-                                onChange={handlePhotoCapture} 
-                                className="hidden" 
-                              />
-                            </label>
-                            <label className="flex flex-col items-center justify-center bg-zinc-900/50 border border-zinc-800 rounded-2xl cursor-pointer active:scale-95 transition-all hover:bg-emerald-500/5 hover:border-emerald-500/20 group">
-                              <Upload size={28} className="text-zinc-500 mb-2 group-hover:scale-110 transition-transform" />
-                              <span className="text-[10px] font-black text-zinc-400 uppercase tracking-tighter">Galeria</span>
-                              <input 
-                                type="file" 
-                                accept="image/*" 
-                                onChange={handlePhotoCapture} 
-                                className="hidden" 
-                              />
-                            </label>
+                      {/* Measured Value Input */}
+                      {checklistItems[currentChecklistStep].requiresValue && (
+                        <div className="space-y-2 p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-2xl">
+                          <div className="flex justify-between items-center">
+                            <label className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Valor de Medição / Grandeza</label>
+                            <span className="text-[8px] font-bold text-zinc-500 uppercase">Ref: {checklistItems[currentChecklistStep].referenceValue}</span>
                           </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* NC Description */}
-                    <AnimatePresence>
-                      {checklistItems[currentChecklistStep].status === 'NC' && (
-                        <motion.div 
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: 'auto', opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          className="space-y-2 overflow-hidden"
-                        >
-                          <label className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">Descrição do Problema (Obrigatório)</label>
-                          <textarea 
-                            value={ncDescription}
-                            onChange={(e) => setNcDescription(e.target.value)}
-                            placeholder="Descreva brevemente a anomalia encontrada..."
-                            className="w-full bg-black border border-zinc-800 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-amber-500/50 resize-none"
-                            rows={2}
+                          <input 
+                            type="text"
+                            value={measuredValue}
+                            onChange={(e) => setMeasuredValue(e.target.value)}
+                            placeholder="Ex: 380V, 12.5A, 45ºC..."
+                            className="w-full bg-black border border-zinc-800 rounded-xl py-3 px-4 text-sm text-white focus:outline-none focus:border-emerald-500 font-mono"
                           />
-                        </motion.div>
+                          <p className="text-[9px] text-zinc-500 italic leading-tight">Insira o valor real encontrado em campo para este equipamento.</p>
+                        </div>
                       )}
-                    </AnimatePresence>
 
-                    {/* Actions */}
-                    <div className="grid grid-cols-3 gap-2 pt-4">
-                      <button 
-                        onClick={() => {
-                          if (checklistItems[currentChecklistStep].requiresValue) {
-                            const updated = [...checklistItems];
-                            updated[currentChecklistStep].status = 'C';
-                            setChecklistItems(updated);
-                          } else {
-                            handleChecklistStep('C');
-                          }
-                        }}
-                        className={`py-4 font-bold rounded-2xl active:scale-95 transition-all text-[10px] flex flex-col items-center justify-center gap-1 ${checklistItems[currentChecklistStep].status === 'C' ? 'bg-emerald-500 text-black' : 'bg-zinc-800 text-emerald-500'}`}
-                      >
-                        <CheckCircle2 size={16} />
-                        CONFORME (C)
-                      </button>
-                      <button 
-                        onClick={() => {
-                          if (checklistItems[currentChecklistStep].status === 'NC' && !checklistItems[currentChecklistStep].requiresValue) {
-                            handleChecklistStep('NC');
-                          } else {
-                            const updated = [...checklistItems];
-                            updated[currentChecklistStep].status = 'NC';
-                            setChecklistItems(updated);
-                          }
-                        }}
-                        className={`py-4 font-bold rounded-2xl active:scale-95 transition-all text-[10px] flex flex-col items-center justify-center gap-1 ${checklistItems[currentChecklistStep].status === 'NC' ? 'bg-red-500 text-white' : 'bg-zinc-800 text-red-500'}`}
-                      >
-                        <AlertTriangle size={16} />
-                        NÃO CONF. (NC)
-                      </button>
-                      <button 
-                        onClick={() => handleChecklistStep('NA')}
-                        className={`py-4 font-bold rounded-2xl active:scale-95 transition-all text-[10px] flex flex-col items-center justify-center gap-1 ${checklistItems[currentChecklistStep].status === 'NA' ? 'bg-zinc-500 text-white' : 'bg-zinc-800 text-zinc-400'}`}
-                      >
-                        <MinusCircle size={16} />
-                        N/A
-                      </button>
-                    </div>
-                    {(checklistItems[currentChecklistStep].status === 'NC' || checklistItems[currentChecklistStep].requiresValue) && checklistItems[currentChecklistStep].status !== null && (
-                      <button 
-                        disabled={checklistItems[currentChecklistStep].status === 'NC' && !ncDescription.trim()}
-                        onClick={() => handleChecklistStep(checklistItems[currentChecklistStep].status as 'C' | 'NC')}
-                        className="w-full py-3 bg-emerald-500 text-black font-bold rounded-xl text-xs uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2"
-                      >
-                        Confirmar e Próximo
-                        <ChevronRight size={14} />
-                      </button>
-                    )}
-                  </div>
+                      {/* Photo Upload Area */}
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-center">
+                          <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
+                            {(checklistItems[currentChecklistStep].label.toUpperCase().includes('FOTO') || 
+                              checklistItems[currentChecklistStep].description.includes('📸')) 
+                              ? 'Foto Obrigatória' 
+                              : 'Foto (Opcional)'}
+                          </label>
+                          {tempPhoto && (
+                            <span className="text-[10px] font-bold text-emerald-500 uppercase flex items-center gap-1">
+                              <CheckCircle2 size={10} /> Foto Capturada
+                            </span>
+                          )}
+                        </div>
+                        
+                        <div className="relative aspect-video bg-black border-2 border-dashed border-zinc-800 rounded-2xl overflow-hidden flex flex-col items-center justify-center gap-3">
+                          {tempPhoto ? (
+                            <>
+                              <img src={tempPhoto} alt="Preview" className="w-full h-full object-cover" />
+                              <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <button 
+                                  onClick={() => setTempPhoto(null)}
+                                  className="bg-red-500 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 active:scale-95 transition-transform"
+                                >
+                                  <Trash2 size={14} /> REMOVER E TIRAR OUTRA
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="grid grid-cols-2 gap-4 w-full p-4 h-full">
+                              <label className="flex flex-col items-center justify-center bg-zinc-900/50 border border-zinc-800 rounded-2xl cursor-pointer active:scale-95 transition-all hover:bg-emerald-500/5 hover:border-emerald-500/20 group">
+                                <Camera size={28} className="text-emerald-500 mb-2 group-hover:scale-110 transition-transform" />
+                                <span className="text-[10px] font-black text-zinc-400 uppercase tracking-tighter">Câmera</span>
+                                <input 
+                                  type="file" 
+                                  accept="image/*" 
+                                  capture="environment" 
+                                  onChange={handlePhotoCapture} 
+                                  className="hidden" 
+                                />
+                              </label>
+                              <label className="flex flex-col items-center justify-center bg-zinc-900/50 border border-zinc-800 rounded-2xl cursor-pointer active:scale-95 transition-all hover:bg-emerald-500/5 hover:border-emerald-500/20 group">
+                                <Upload size={28} className="text-zinc-500 mb-2 group-hover:scale-110 transition-transform" />
+                                <span className="text-[10px] font-black text-zinc-400 uppercase tracking-tighter">Galeria</span>
+                                <input 
+                                  type="file" 
+                                  accept="image/*" 
+                                  onChange={handlePhotoCapture} 
+                                  className="hidden" 
+                                />
+                              </label>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* NC Description */}
+                      <AnimatePresence>
+                        {checklistItems[currentChecklistStep].status === 'NC' && (
+                          <motion.div 
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="space-y-2 overflow-hidden"
+                          >
+                            <label className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">Descrição do Problema (Obrigatório)</label>
+                            <textarea 
+                              value={ncDescription}
+                              onChange={(e) => setNcDescription(e.target.value)}
+                              placeholder="Descreva brevemente a anomalia encontrada..."
+                              className="w-full bg-black border border-zinc-800 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-amber-500/50 resize-none"
+                              rows={2}
+                            />
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      {/* Actions */}
+                      <div className="grid grid-cols-3 gap-2 pt-4">
+                        <button 
+                          onClick={() => {
+                            if (checklistItems[currentChecklistStep].requiresValue) {
+                              const updated = [...checklistItems];
+                              updated[currentChecklistStep].status = 'C';
+                              setChecklistItems(updated);
+                            } else {
+                              handleChecklistStep('C');
+                            }
+                          }}
+                          className={`py-4 font-bold rounded-2xl active:scale-95 transition-all text-[10px] flex flex-col items-center justify-center gap-1 ${checklistItems[currentChecklistStep].status === 'C' ? 'bg-emerald-500 text-black' : 'bg-zinc-800 text-emerald-500'}`}
+                        >
+                          <CheckCircle2 size={16} />
+                          CONFORME (C)
+                        </button>
+                        <button 
+                          onClick={() => {
+                            if (checklistItems[currentChecklistStep].status === 'NC' && !checklistItems[currentChecklistStep].requiresValue) {
+                              handleChecklistStep('NC');
+                            } else {
+                              const updated = [...checklistItems];
+                              updated[currentChecklistStep].status = 'NC';
+                              setChecklistItems(updated);
+                            }
+                          }}
+                          className={`py-4 font-bold rounded-2xl active:scale-95 transition-all text-[10px] flex flex-col items-center justify-center gap-1 ${checklistItems[currentChecklistStep].status === 'NC' ? 'bg-red-500 text-white' : 'bg-zinc-800 text-red-500'}`}
+                        >
+                          <AlertTriangle size={16} />
+                          NÃO CONF. (NC)
+                        </button>
+                        <button 
+                          onClick={() => handleChecklistStep('NA')}
+                          className={`py-4 font-bold rounded-2xl active:scale-95 transition-all text-[10px] flex flex-col items-center justify-center gap-1 ${checklistItems[currentChecklistStep].status === 'NA' ? 'bg-zinc-500 text-white' : 'bg-zinc-800 text-zinc-400'}`}
+                        >
+                          <MinusCircle size={16} />
+                          N/A
+                        </button>
+                      </div>
+                      {(checklistItems[currentChecklistStep].status === 'NC' || checklistItems[currentChecklistStep].requiresValue) && checklistItems[currentChecklistStep].status !== null && (
+                        <button 
+                          disabled={checklistItems[currentChecklistStep].status === 'NC' && !ncDescription.trim()}
+                          onClick={() => handleChecklistStep(checklistItems[currentChecklistStep].status as 'C' | 'NC')}
+                          className="w-full py-3 bg-emerald-500 text-black font-bold rounded-xl text-xs uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2"
+                        >
+                          Confirmar e Próximo
+                          <ChevronRight size={14} />
+                        </button>
+                      )}
+                    </motion.div>
+                  </AnimatePresence>
                 </div>
               )}
             </motion.div>
@@ -2622,7 +2910,13 @@ export default function App() {
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed inset-x-0 bottom-0 max-w-md mx-auto bg-zinc-900 border-t border-zinc-800 rounded-t-[32px] z-50 p-6 pb-12 overflow-y-auto max-h-[90vh]"
+            drag="y"
+            dragConstraints={{ top: 0, bottom: 0 }}
+            dragElastic={0.4}
+            onDragEnd={(_, info) => {
+              if (info.offset.y > 150) setSelectedAsset(null);
+            }}
+            className="fixed inset-x-0 bottom-0 max-w-md mx-auto bg-zinc-900 border-t border-zinc-800 rounded-t-[32px] z-50 p-6 pb-12 overflow-y-auto max-h-[90vh] touch-none"
           >
             <div className="w-12 h-1.5 bg-zinc-800 rounded-full mx-auto mb-6" onClick={() => setSelectedAsset(null)} />
             

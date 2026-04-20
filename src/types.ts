@@ -59,3 +59,14 @@ export interface KnowledgeBaseDoc {
   fileData?: string;
   uploadDate: string;
 }
+
+export interface AppNotification {
+  id: string;
+  type: 'status_change' | 'deviation';
+  assetId: string;
+  assetName: string;
+  message: string;
+  date: string;
+  read: boolean;
+  severity: 'Alerta' | 'Crítico';
+}
