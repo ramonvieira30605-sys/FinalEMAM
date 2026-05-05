@@ -200,6 +200,7 @@ export default function App() {
   const [viewingAssetDetail, setViewingAssetDetail] = useState<Asset | null>(null);
   const [isEditingAsset, setIsEditingAsset] = useState(false);
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
+  const [openBulkMenu, setOpenBulkMenu] = useState<'status' | 'freq' | null>(null);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -2186,41 +2187,61 @@ export default function App() {
                 </div>
 
                 {selectedAssetIds.length > 0 && (
-                  <div className="flex items-center gap-2 overflow-x-auto pb-1 custom-scrollbar scrollbar-hide">
-                    <div className="relative group">
-                      <button className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 border border-zinc-800 text-zinc-400 rounded-lg text-[10px] font-bold uppercase hover:text-white hover:border-zinc-700 transition-all">
+                  <div className="flex items-center gap-2">
+                    <div className="relative">
+                      <button 
+                        onClick={() => setOpenBulkMenu(openBulkMenu === 'status' ? null : 'status')}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-[10px] font-bold uppercase transition-all ${
+                          openBulkMenu === 'status' ? 'bg-emerald-500 text-black border-emerald-500' : 'bg-zinc-900 border-zinc-800 text-zinc-400'
+                        }`}
+                      >
                         <ShieldCheck size={12} />
                         Status
                       </button>
-                      <div className="absolute right-0 top-full mt-1 w-32 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 p-1">
-                        {['Operacional', 'Alerta', 'Manutenção', 'Crítico'].map(s => (
-                          <button 
-                            key={s}
-                            onClick={() => bulkUpdateStatus(s as AssetStatus)}
-                            className="w-full text-left px-3 py-2 text-[10px] font-bold uppercase text-zinc-400 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-lg"
-                          >
-                            {s}
-                          </button>
-                        ))}
-                      </div>
+                      {openBulkMenu === 'status' && (
+                        <div className="absolute right-0 top-full mt-1 w-32 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl z-50 p-1 flex flex-col">
+                          {['Operacional', 'Alerta', 'Manutenção', 'Crítico'].map(s => (
+                            <button 
+                              key={s}
+                              onClick={() => {
+                                bulkUpdateStatus(s as AssetStatus);
+                                setOpenBulkMenu(null);
+                              }}
+                              className="w-full text-left px-3 py-2 text-[10px] font-bold uppercase text-zinc-400 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-lg"
+                            >
+                              {s}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
-                    <div className="relative group">
-                      <button className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 border border-zinc-800 text-zinc-400 rounded-lg text-[10px] font-bold uppercase hover:text-white hover:border-zinc-700 transition-all">
+                    <div className="relative">
+                      <button 
+                        onClick={() => setOpenBulkMenu(openBulkMenu === 'freq' ? null : 'freq')}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-[10px] font-bold uppercase transition-all ${
+                          openBulkMenu === 'freq' ? 'bg-emerald-500 text-black border-emerald-500' : 'bg-zinc-900 border-zinc-800 text-zinc-400'
+                        }`}
+                      >
                         <Clock size={12} />
                         Freq.
                       </button>
-                      <div className="absolute right-0 top-full mt-1 w-32 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 p-1">
-                        {[7, 15, 30, 45, 60, 90].map(d => (
-                          <button 
-                            key={d}
-                            onClick={() => bulkUpdateFrequency(d)}
-                            className="w-full text-left px-3 py-2 text-[10px] font-bold uppercase text-zinc-400 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-lg"
-                          >
-                            {d} dias
-                          </button>
-                        ))}
-                      </div>
+                      {openBulkMenu === 'freq' && (
+                        <div className="absolute right-0 top-full mt-1 w-32 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl z-50 p-1 flex flex-col">
+                          {[7, 15, 30, 45, 60, 90].map(d => (
+                            <button 
+                              key={d}
+                              onClick={() => {
+                                bulkUpdateFrequency(d);
+                                setOpenBulkMenu(null);
+                              }}
+                              className="w-full text-left px-3 py-2 text-[10px] font-bold uppercase text-zinc-400 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-lg"
+                            >
+                              {d} dias
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     <button 
