@@ -11,6 +11,8 @@ export interface Asset {
   status: AssetStatus;
   lastUpdated: string;
   createdAt: string;
+  inspectionFrequencyDays?: number;
+  lastChecklistDate?: string;
   technicalParams?: {
     current?: string;
     rpm?: string;
@@ -62,7 +64,7 @@ export interface KnowledgeBaseDoc {
 
 export interface AppNotification {
   id: string;
-  type: 'status_change' | 'deviation';
+  type: 'status_change' | 'deviation' | 'reminder';
   assetId: string;
   assetName: string;
   message: string;

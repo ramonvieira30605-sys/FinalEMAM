@@ -87,7 +87,10 @@ import {
   MinusCircle,
   Copy,
   Eye,
-  Edit3
+  Edit3,
+  Clock,
+  Check,
+  Minus
 } from 'lucide-react';
 import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react';
 import jsPDF from 'jspdf';
@@ -195,6 +198,8 @@ const StatusBadge = ({ status }: { status: AssetStatus }) => {
 export default function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'inventory' | 'guide' | 'knowledge' | 'reports' | 'alerts'>('dashboard');
   const [viewingAssetDetail, setViewingAssetDetail] = useState<Asset | null>(null);
+  const [isEditingAsset, setIsEditingAsset] = useState(false);
+  const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -212,6 +217,42 @@ export default function App() {
   const [inventorySearchTerm, setInventorySearchTerm] = useState('');
   const [docSearchTerm, setDocSearchTerm] = useState('');
   const [checklistSummary, setChecklistSummary] = useState<string | null>(null);
+
+  // Check for reminders
+  useEffect(() => {
+    if (isLoadingData) return;
+    
+    // Throttle checks or just run once per session/period
+    assets.forEach(asset => {
+      if (!asset.inspectionFrequencyDays) return;
+      
+      const lastDateStr = asset.lastChecklistDate || asset.createdAt;
+      const lastDate = new Date(lastDateStr);
+      const nextDate = new Date(lastDate);
+      nextDate.setDate(lastDate.getDate() + asset.inspectionFrequencyDays);
+      
+      const today = new Date();
+      
+      if (today >= nextDate) {
+        // Check if we already have a reminder for this asset today
+        const alreadyNotified = notifications.some(n => 
+          n.type === 'reminder' && 
+          n.assetId === asset.id && 
+          new Date(n.date).toDateString() === today.toDateString()
+        );
+        
+        if (!alreadyNotified) {
+          addNotification({
+            type: 'reminder',
+            assetId: asset.id,
+            assetName: asset.name,
+            severity: 'Alerta',
+            message: `Inspeção agendada pendente para o ativo ${asset.name}. Prazo: ${asset.inspectionFrequencyDays} dias cumpridos.`
+          });
+        }
+      }
+    });
+  }, [assets, isLoadingData, notifications.length]);
   
   // New states for Reports
   const [reportTechnician, setReportTechnician] = useState('');
@@ -237,7 +278,8 @@ export default function App() {
       asset.name.toLowerCase().includes(inventorySearchTerm.toLowerCase()) ||
       asset.model.toLowerCase().includes(inventorySearchTerm.toLowerCase()) ||
       asset.serialNumber.toLowerCase().includes(inventorySearchTerm.toLowerCase()) ||
-      asset.location.toLowerCase().includes(inventorySearchTerm.toLowerCase())
+      asset.location.toLowerCase().includes(inventorySearchTerm.toLowerCase()) ||
+      asset.type.toLowerCase().includes(inventorySearchTerm.toLowerCase())
     );
   }, [assets, inventorySearchTerm]);
 
@@ -265,6 +307,8 @@ export default function App() {
   // Reset asset detail view on tab change
   useEffect(() => {
     setViewingAssetDetail(null);
+    setIsEditingAsset(false);
+    setSelectedAssetIds([]);
   }, [activeTab]);
 
   // Load from LocalStorage
@@ -334,12 +378,61 @@ export default function App() {
     localStorage.setItem('emam_knowledge', JSON.stringify(knowledgeBase));
   }, [knowledgeBase]);
 
-  const stats = useMemo(() => ({
-    total: assets.length,
-    operational: assets.filter(a => a.status === 'Operacional').length,
-    alerts: assets.filter(a => a.status !== 'Operacional').length,
-    unreadNotifications: notifications.filter(n => !n.read).length
-  }), [assets, notifications]);
+  const saveAssetEdit = () => {
+    if (!viewingAssetDetail) return;
+    
+    const updatedAsset = {
+      ...viewingAssetDetail,
+      lastUpdated: new Date().toISOString()
+    };
+    
+    setAssets(prev => prev.map(a => a.id === viewingAssetDetail.id ? updatedAsset : a));
+    setViewingAssetDetail(updatedAsset);
+    setIsEditingAsset(false);
+  };
+
+  const bulkDeleteAssets = () => {
+    if (selectedAssetIds.length === 0) return;
+    if (confirm(`Deseja realmente excluir ${selectedAssetIds.length} ativos?`)) {
+      setAssets(prev => prev.filter(a => !selectedAssetIds.includes(a.id)));
+      setChecklists(prev => prev.filter(c => !selectedAssetIds.includes(c.assetId)));
+      setSelectedAssetIds([]);
+    }
+  };
+
+  const bulkUpdateStatus = (status: AssetStatus) => {
+    if (selectedAssetIds.length === 0) return;
+    setAssets(prev => prev.map(a => 
+      selectedAssetIds.includes(a.id) ? { ...a, status, lastUpdated: new Date().toISOString() } : a
+    ));
+    setSelectedAssetIds([]);
+  };
+
+  const bulkUpdateFrequency = (days: number) => {
+    if (selectedAssetIds.length === 0) return;
+    setAssets(prev => prev.map(a => 
+      selectedAssetIds.includes(a.id) ? { ...a, inspectionFrequencyDays: days, lastUpdated: new Date().toISOString() } : a
+    ));
+    setSelectedAssetIds([]);
+  };
+
+  const stats = useMemo(() => {
+    const overdueCount = assets.filter(asset => {
+      if (!asset.inspectionFrequencyDays) return false;
+      const lastDateStr = asset.lastChecklistDate || asset.createdAt;
+      const nextDate = new Date(lastDateStr);
+      nextDate.setDate(nextDate.getDate() + asset.inspectionFrequencyDays);
+      return new Date() >= nextDate;
+    }).length;
+
+    return {
+      total: assets.length,
+      operational: assets.filter(a => a.status === 'Operacional').length,
+      alerts: assets.filter(a => a.status !== 'Operacional').length,
+      unreadNotifications: notifications.filter(n => !n.read).length,
+      pendingInspections: overdueCount
+    };
+  }, [assets, notifications]);
 
   const generatePDF = (checklist: Checklist, asset: Asset) => {
     const doc = new jsPDF();
@@ -719,6 +812,8 @@ export default function App() {
   const handleAddAsset = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+    const frequency = formData.get('inspectionFrequencyDays') ? parseInt(formData.get('inspectionFrequencyDays') as string) : undefined;
+    
     const newAsset: Asset = {
       id: crypto.randomUUID(),
       name: formData.get('name') as string,
@@ -729,6 +824,7 @@ export default function App() {
       status: formData.get('status') as AssetStatus,
       createdAt: new Date().toISOString(),
       lastUpdated: new Date().toISOString(),
+      inspectionFrequencyDays: frequency,
       technicalParams: {
         current: formData.get('current') as string,
         rpm: formData.get('rpm') as string,
@@ -980,20 +1076,23 @@ export default function App() {
     if (hasNC) newStatus = 'Crítico';
     else if (hasDeviation) newStatus = 'Alerta';
 
-    // Update asset status if changed
-    if (newStatus !== selectedAsset.status) {
-      setAssets(prev => prev.map(a => a.id === selectedAsset.id ? { ...a, status: newStatus, lastUpdated: new Date().toISOString() } : a));
-      
-      // Notify status change if it becomes critical/alert
-      if (newStatus === 'Alerta' || newStatus === 'Crítico') {
-        addNotification({
-          type: 'status_change',
-          assetId: selectedAsset.id,
-          assetName: selectedAsset.name,
-          severity: newStatus as any,
-          message: `Status do ativo alterado para ${newStatus.toUpperCase()} após inspeção.`
-        });
-      }
+    // Update asset status and last inspection date
+    setAssets(prev => prev.map(a => a.id === selectedAsset.id ? { 
+      ...a, 
+      status: newStatus !== selectedAsset.status ? newStatus : a.status, 
+      lastUpdated: new Date().toISOString(),
+      lastChecklistDate: new Date().toISOString()
+    } : a));
+
+    // Notify status change if it becomes critical/alert
+    if (newStatus !== selectedAsset.status && (newStatus === 'Alerta' || newStatus === 'Crítico')) {
+      addNotification({
+        type: 'status_change',
+        assetId: selectedAsset.id,
+        assetName: selectedAsset.name,
+        severity: newStatus as any,
+        message: `Status do ativo alterado para ${newStatus.toUpperCase()} após inspeção.`
+      });
     }
 
     setChecklists(prev => [newChecklist, ...prev]);
@@ -1531,12 +1630,12 @@ export default function App() {
             >
               <div className="grid grid-cols-2 gap-4">
                 <div className="dark-card emerald-glow">
-                  <p className="text-zinc-500 text-xs font-medium">Total de Ativos</p>
+                  <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest">Total de Ativos</p>
                   <h3 className="text-3xl font-bold mt-1">{stats.total}</h3>
                 </div>
-                <div className="dark-card border-emerald-500/30">
-                  <p className="text-zinc-500 text-xs font-medium">Operacionais</p>
-                  <h3 className="text-3xl font-bold mt-1 text-emerald-500">{stats.operational}</h3>
+                <div className="dark-card border-red-500/20 bg-red-500/5">
+                  <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest">Inspeções Pendentes</p>
+                  <h3 className="text-3xl font-bold mt-1 text-red-500">{stats.pendingInspections}</h3>
                 </div>
               </div>
 
@@ -1604,41 +1703,77 @@ export default function App() {
               {/* Header with Navigation */}
               <div className="flex items-center justify-between">
                 <button 
-                  onClick={() => setViewingAssetDetail(null)}
+                  onClick={() => {
+                    setViewingAssetDetail(null);
+                    setIsEditingAsset(false);
+                  }}
                   className="flex items-center gap-2 text-zinc-500 hover:text-white transition-colors group"
                 >
                   <ChevronLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
                   <span className="text-xs font-bold uppercase tracking-widest">Sair</span>
                 </button>
 
-                <div className="flex items-center gap-2">
-                  {(() => {
-                    const currentIndex = assets.findIndex(a => a.id === viewingAssetDetail.id);
-                    const prevAsset = currentIndex > 0 ? assets[currentIndex - 1] : null;
-                    const nextAsset = currentIndex < assets.length - 1 ? assets[currentIndex + 1] : null;
+                <div className="flex items-center gap-4">
+                  {!isEditingAsset && (
+                    <button 
+                      onClick={() => setIsEditingAsset(true)}
+                      className="flex items-center gap-2 text-emerald-500 hover:text-emerald-400 transition-colors active:scale-95 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20"
+                    >
+                      <Edit3 size={14} />
+                      <span className="text-[10px] font-black uppercase tracking-widest">Editar Ativo</span>
+                    </button>
+                  )}
 
-                    return (
-                      <>
-                        <button 
-                          disabled={!prevAsset}
-                          onClick={() => prevAsset && setViewingAssetDetail(prevAsset)}
-                          className={`p-2 rounded-xl border border-zinc-800 transition-all ${!prevAsset ? 'opacity-30' : 'hover:bg-zinc-800 active:scale-90'}`}
-                        >
-                          <ChevronLeft size={16} />
-                        </button>
-                        <span className="text-[10px] font-black w-10 text-center text-zinc-500">
-                          {currentIndex + 1} / {assets.length}
-                        </span>
-                        <button 
-                          disabled={!nextAsset}
-                          onClick={() => nextAsset && setViewingAssetDetail(nextAsset)}
-                          className={`p-2 rounded-xl border border-zinc-800 transition-all ${!nextAsset ? 'opacity-30' : 'hover:bg-zinc-800 active:scale-90'}`}
-                        >
-                          <ChevronRight size={16} />
-                        </button>
-                      </>
-                    );
-                  })()}
+                  {isEditingAsset && (
+                    <div className="flex items-center gap-2">
+                       <button 
+                        onClick={() => {
+                          const original = assets.find(a => a.id === viewingAssetDetail.id);
+                          if (original) setViewingAssetDetail(original);
+                          setIsEditingAsset(false);
+                        }}
+                        className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest hover:text-white"
+                      >
+                        Cancelar
+                      </button>
+                      <button 
+                        onClick={saveAssetEdit}
+                        className="bg-emerald-500 text-black text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-lg active:scale-95"
+                      >
+                        Salvar Alterações
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2">
+                    {(() => {
+                      const currentIndex = assets.findIndex(a => a.id === viewingAssetDetail.id);
+                      const prevAsset = currentIndex > 0 ? assets[currentIndex - 1] : null;
+                      const nextAsset = currentIndex < assets.length - 1 ? assets[currentIndex + 1] : null;
+
+                      return (
+                        <>
+                          <button 
+                            disabled={!prevAsset || isEditingAsset}
+                            onClick={() => prevAsset && setViewingAssetDetail(prevAsset)}
+                            className={`p-2 rounded-xl border border-zinc-800 transition-all ${(!prevAsset || isEditingAsset) ? 'opacity-30' : 'hover:bg-zinc-800 active:scale-90'}`}
+                          >
+                            <ChevronLeft size={16} />
+                          </button>
+                          <span className="text-[10px] font-black w-10 text-center text-zinc-500">
+                            {currentIndex + 1} / {assets.length}
+                          </span>
+                          <button 
+                            disabled={!nextAsset || isEditingAsset}
+                            onClick={() => nextAsset && setViewingAssetDetail(nextAsset)}
+                            className={`p-2 rounded-xl border border-zinc-800 transition-all ${(!nextAsset || isEditingAsset) ? 'opacity-30' : 'hover:bg-zinc-800 active:scale-90'}`}
+                          >
+                            <ChevronRight size={16} />
+                          </button>
+                        </>
+                      );
+                    })()}
+                  </div>
                 </div>
               </div>
 
@@ -1649,24 +1784,94 @@ export default function App() {
                 </div>
                 <div className="relative z-10 space-y-4">
                   <div className="flex justify-between items-start">
-                    <div>
-                      <p className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest mb-1">{viewingAssetDetail.type}</p>
-                      <h2 className="text-2xl font-black text-white leading-tight">{viewingAssetDetail.name}</h2>
-                      <p className="text-xs text-zinc-400 mt-1 flex items-center gap-1">
-                        <Search size={12} /> {viewingAssetDetail.location}
-                      </p>
+                    <div className="flex-1">
+                      {isEditingAsset ? (
+                        <div className="space-y-3 mr-4">
+                          <div>
+                            <label className="text-[8px] text-zinc-500 uppercase font-black tracking-widest block mb-1">Tipo de Ativo</label>
+                            <select 
+                              value={viewingAssetDetail.type}
+                              onChange={(e) => setViewingAssetDetail({...viewingAssetDetail, type: e.target.value as AssetType})}
+                              className="w-full bg-black border border-zinc-800 rounded-xl py-1.5 px-3 text-xs text-white focus:outline-none focus:border-emerald-500"
+                            >
+                              {['Motor', 'Inversor', 'Soft-Starter', 'Quadro', 'Compressor', 'Bomba', 'Outro'].map(t => (
+                                <option key={t} value={t}>{t}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-[8px] text-zinc-500 uppercase font-black tracking-widest block mb-1">Nome do Ativo</label>
+                            <input 
+                              type="text" 
+                              value={viewingAssetDetail.name}
+                              onChange={(e) => setViewingAssetDetail({...viewingAssetDetail, name: e.target.value})}
+                              className="w-full bg-black border border-zinc-800 rounded-xl py-2 px-3 text-sm font-bold text-white focus:outline-none focus:border-emerald-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[8px] text-zinc-500 uppercase font-black tracking-widest block mb-1">Localização</label>
+                            <input 
+                              type="text" 
+                              value={viewingAssetDetail.location}
+                              onChange={(e) => setViewingAssetDetail({...viewingAssetDetail, location: e.target.value})}
+                              className="w-full bg-black border border-zinc-800 rounded-xl py-1.5 px-3 text-xs text-white focus:outline-none focus:border-emerald-500"
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest mb-1">{viewingAssetDetail.type}</p>
+                          <h2 className="text-2xl font-black text-white leading-tight">{viewingAssetDetail.name}</h2>
+                          <p className="text-xs text-zinc-400 mt-1 flex items-center gap-1">
+                            <Search size={12} /> {viewingAssetDetail.location}
+                          </p>
+                        </>
+                      )}
                     </div>
-                    <StatusBadge status={viewingAssetDetail.status} />
+                    {isEditingAsset ? (
+                      <div className="w-32">
+                        <label className="text-[8px] text-zinc-500 uppercase font-black tracking-widest block mb-1 text-right">Status</label>
+                        <select 
+                          value={viewingAssetDetail.status}
+                          onChange={(e) => setViewingAssetDetail({...viewingAssetDetail, status: e.target.value as AssetStatus})}
+                          className="w-full bg-black border border-zinc-800 rounded-xl py-1.5 px-3 text-[10px] font-bold text-white focus:outline-none focus:border-emerald-500 text-right appearance-none"
+                        >
+                          {['Operacional', 'Alerta', 'Manutenção', 'Crítico'].map(s => (
+                            <option key={s} value={s}>{s.toUpperCase()}</option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : (
+                      <StatusBadge status={viewingAssetDetail.status} />
+                    )}
                   </div>
                   
                   <div className="flex items-center gap-4 pt-2 border-t border-zinc-800/50">
-                    <div>
+                    <div className="flex-1">
                       <p className="text-[8px] text-zinc-500 uppercase font-bold tracking-widest">Nº de Série</p>
-                      <p className="text-xs font-mono text-white">{viewingAssetDetail.serialNumber}</p>
+                      {isEditingAsset ? (
+                        <input 
+                          type="text" 
+                          value={viewingAssetDetail.serialNumber}
+                          onChange={(e) => setViewingAssetDetail({...viewingAssetDetail, serialNumber: e.target.value})}
+                          className="w-full bg-black/50 border border-zinc-800 rounded-lg py-1 px-2 text-xs font-mono text-white focus:outline-none focus:border-emerald-500 mt-1"
+                        />
+                      ) : (
+                        <p className="text-xs font-mono text-white">{viewingAssetDetail.serialNumber}</p>
+                      )}
                     </div>
-                    <div>
+                    <div className="flex-1">
                       <p className="text-[8px] text-zinc-500 uppercase font-bold tracking-widest">Modelo</p>
-                      <p className="text-xs text-white">{viewingAssetDetail.model}</p>
+                      {isEditingAsset ? (
+                        <input 
+                          type="text" 
+                          value={viewingAssetDetail.model}
+                          onChange={(e) => setViewingAssetDetail({...viewingAssetDetail, model: e.target.value})}
+                          className="w-full bg-black/50 border border-zinc-800 rounded-lg py-1 px-2 text-xs text-white focus:outline-none focus:border-emerald-500 mt-1"
+                        />
+                      ) : (
+                        <p className="text-xs text-white">{viewingAssetDetail.model}</p>
+                      )}
                     </div>
                   </div>
 
@@ -1735,22 +1940,72 @@ export default function App() {
                   <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Ficha Técnica</h4>
                 </div>
                 
+                {/* Maintenance Scheduling Section */}
+                <div className="dark-card border-zinc-800 bg-emerald-500/5 flex flex-col gap-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Clock size={16} className="text-emerald-500" />
+                      <h4 className="text-xs font-bold text-white uppercase tracking-tight">Periodicidade de Inspeção</h4>
+                    </div>
+                    <span className="text-[10px] font-bold text-emerald-500 uppercase bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                      {viewingAssetDetail.inspectionFrequencyDays ? `${viewingAssetDetail.inspectionFrequencyDays} Dias` : 'Não Def.'}
+                    </span>
+                  </div>
+                  
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 space-y-1">
+                      <input 
+                        type="number"
+                        value={viewingAssetDetail.inspectionFrequencyDays || ''}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value);
+                          const newVal = isNaN(val) ? undefined : val;
+                          setViewingAssetDetail({ ...viewingAssetDetail, inspectionFrequencyDays: newVal });
+                        }}
+                        placeholder="Alterar dias..."
+                        disabled={!isEditingAsset}
+                        className={`w-full bg-black border border-zinc-800 rounded-xl py-2 px-3 text-xs focus:outline-none transition-all ${isEditingAsset ? 'focus:border-emerald-500 ring-1 ring-emerald-500/20' : 'opacity-70 cursor-not-allowed text-zinc-500'}`}
+                      />
+                    </div>
+                    <div className="flex-1 text-[10px] text-zinc-500 leading-tight">
+                      Atualize o intervalo de manutenção preventiva para notificações automáticas.
+                    </div>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   {[
-                    { label: 'Corrente (A)', value: viewingAssetDetail.technicalParams?.current },
-                    { label: 'RPM', value: viewingAssetDetail.technicalParams?.rpm },
-                    { label: 'Frequência (Hz)', value: viewingAssetDetail.technicalParams?.frequency },
-                    { label: 'Potência', value: viewingAssetDetail.technicalParams?.power },
-                    { label: 'Tensão (V)', value: viewingAssetDetail.technicalParams?.voltage },
-                    { label: 'F. Serviço', value: viewingAssetDetail.technicalParams?.serviceFactor },
-                    { label: 'Motor', value: viewingAssetDetail.technicalParams?.connectedMotor },
-                    { label: 'P0100 (Acel.)', value: viewingAssetDetail.technicalParams?.p0100 },
-                    { label: 'P0101 (Desac.)', value: viewingAssetDetail.technicalParams?.p0101 },
-                    { label: 'P0102 (Config.)', value: viewingAssetDetail.technicalParams?.p0102 },
+                    {label: 'Corrente (A)', value: viewingAssetDetail.technicalParams?.current, key: 'current'},
+                    {label: 'RPM', value: viewingAssetDetail.technicalParams?.rpm, key: 'rpm'},
+                    {label: 'Frequência (Hz)', value: viewingAssetDetail.technicalParams?.frequency, key: 'frequency'},
+                    {label: 'Potência', value: viewingAssetDetail.technicalParams?.power, key: 'power'},
+                    {label: 'Tensão (V)', value: viewingAssetDetail.technicalParams?.voltage, key: 'voltage'},
+                    {label: 'F. Serviço', value: viewingAssetDetail.technicalParams?.serviceFactor, key: 'serviceFactor'},
+                    {label: 'Motor', value: viewingAssetDetail.technicalParams?.connectedMotor, key: 'connectedMotor'},
+                    {label: 'P0100 (Acel.)', value: viewingAssetDetail.technicalParams?.p0100, key: 'p0100'},
+                    {label: 'P0101 (Desac.)', value: viewingAssetDetail.technicalParams?.p0101, key: 'p0101'},
+                    {label: 'P0102 (Config.)', value: viewingAssetDetail.technicalParams?.p0102, key: 'p0102'},
                   ].map((param, idx) => (
                     <div key={idx} className="dark-card p-3 bg-zinc-900/40 border-zinc-800/60 transition-all hover:bg-zinc-900/60 group">
                       <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest group-hover:text-emerald-500/70 transition-colors">{param.label}</p>
-                      <p className="text-lg font-black text-white mt-1 leading-none">{param.value || '---'}</p>
+                      {isEditingAsset ? (
+                        <input 
+                          type="text"
+                          value={param.value || ''}
+                          onChange={(e) => {
+                            setViewingAssetDetail({
+                              ...viewingAssetDetail,
+                              technicalParams: {
+                                ...(viewingAssetDetail.technicalParams || {}),
+                                [param.key]: e.target.value
+                              }
+                            });
+                          }}
+                          className="w-full bg-black/50 border border-zinc-800 rounded-lg py-1 px-2 text-sm font-bold text-white focus:outline-none focus:border-emerald-500 mt-1"
+                        />
+                      ) : (
+                        <p className="text-lg font-black text-white mt-1 leading-none">{param.value || '---'}</p>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1827,29 +2082,54 @@ export default function App() {
 
               {/* Actions */}
               <div className="grid grid-cols-2 gap-3 pt-4">
-                <button 
-                  onClick={() => {
-                    setSelectedAsset(viewingAssetDetail);
-                    startChecklist(viewingAssetDetail);
-                  }}
-                  className="py-4 bg-emerald-500 hover:bg-emerald-600 text-black font-bold rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95"
-                >
-                  <Plus size={18} />
-                  NOVA INSPEÇÃO
-                </button>
-                <button 
-                  onClick={() => {
-                    if (confirm('Deseja realmente excluir este ativo e todo seu histórico?')) {
-                      setAssets(prev => prev.filter(a => a.id !== viewingAssetDetail.id));
-                      setChecklists(prev => prev.filter(c => c.assetId !== viewingAssetDetail.id));
-                      setViewingAssetDetail(null);
-                    }
-                  }}
-                  className="py-4 bg-zinc-900 hover:bg-red-500/10 text-zinc-500 hover:text-red-500 border border-zinc-800 hover:border-red-500/50 font-bold rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95"
-                >
-                  <Trash2 size={18} />
-                  EXCLUIR ATIVO
-                </button>
+                {isEditingAsset ? (
+                  <>
+                    <button 
+                      onClick={() => {
+                        const original = assets.find(a => a.id === viewingAssetDetail.id);
+                        if (original) setViewingAssetDetail(original);
+                        setIsEditingAsset(false);
+                      }}
+                      className="py-4 bg-zinc-900 text-zinc-500 border border-zinc-800 font-bold rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95"
+                    >
+                      <X size={18} />
+                      CANCELAR
+                    </button>
+                    <button 
+                      onClick={saveAssetEdit}
+                      className="py-4 bg-emerald-500 hover:bg-emerald-600 text-black font-bold rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95"
+                    >
+                      <ShieldCheck size={18} />
+                      SALVAR ALTERAÇÕES
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button 
+                      onClick={() => {
+                        setSelectedAsset(viewingAssetDetail);
+                        startChecklist(viewingAssetDetail);
+                      }}
+                      className="py-4 bg-emerald-500 hover:bg-emerald-600 text-black font-bold rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95"
+                    >
+                      <Plus size={18} />
+                      NOVA INSPEÇÃO
+                    </button>
+                    <button 
+                      onClick={() => {
+                        if (confirm('Deseja realmente excluir este ativo e todo seu histórico?')) {
+                          setAssets(prev => prev.filter(a => a.id !== viewingAssetDetail.id));
+                          setChecklists(prev => prev.filter(c => c.assetId !== viewingAssetDetail.id));
+                          setViewingAssetDetail(null);
+                        }
+                      }}
+                      className="py-4 bg-zinc-900 hover:bg-red-500/10 text-zinc-500 hover:text-red-500 border border-zinc-800 hover:border-red-500/50 font-bold rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95"
+                    >
+                      <Trash2 size={18} />
+                      EXCLUIR ATIVO
+                    </button>
+                  </>
+                )}
               </div>
             </motion.div>
           )}
@@ -1867,36 +2147,139 @@ export default function App() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={16} />
                 <input 
                   type="text" 
-                  placeholder="Buscar por modelo ou série..."
+                  placeholder="Buscar por nome, modelo, série, tipo ou local..."
                   value={inventorySearchTerm}
                   onChange={(e) => setInventorySearchTerm(e.target.value)}
                   className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:border-emerald-500/50 transition-colors"
                 />
               </div>
 
-              <div className="space-y-3">
-                {filteredAssets.map(asset => (
-                  <div 
-                    key={asset.id} 
-                    onClick={() => setViewingAssetDetail(asset)}
-                    className="dark-card cursor-pointer transition-all hover:border-emerald-500/30 active:scale-[0.98]"
+              {/* Bulk Actions Toolbar */}
+              <div className="flex items-center justify-between gap-4 py-2 px-1">
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => {
+                      if (selectedAssetIds.length === filteredAssets.length) {
+                        setSelectedAssetIds([]);
+                      } else {
+                        setSelectedAssetIds(filteredAssets.map(a => a.id));
+                      }
+                    }}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all text-[10px] font-bold uppercase tracking-widest ${
+                      selectedAssetIds.length > 0 && selectedAssetIds.length === filteredAssets.length
+                        ? 'bg-emerald-500/10 border-emerald-500 text-emerald-500'
+                        : 'bg-zinc-900 border-zinc-800 text-zinc-500'
+                    }`}
                   >
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <p className="text-[10px] text-emerald-500 font-bold uppercase tracking-tighter">{asset.type}</p>
-                        <h4 className="font-bold text-white">{asset.name}</h4>
-                      </div>
-                      <StatusBadge status={asset.status} />
+                    <div className={`w-3 h-3 rounded flex items-center justify-center border ${
+                      selectedAssetIds.length > 0 ? 'bg-emerald-500 border-emerald-500' : 'border-zinc-700'
+                    }`}>
+                      {selectedAssetIds.length === filteredAssets.length ? <Check size={10} className="text-black" /> : selectedAssetIds.length > 0 && <Minus size={10} className="text-black" />}
                     </div>
-                    <div className="flex justify-between items-end">
-                      <p className="text-[10px] text-zinc-500 font-mono">SN: {asset.serialNumber}</p>
-                      <div className="flex items-center gap-2 text-zinc-500 text-[10px] font-bold uppercase">
-                        <span>Ver Detalhes</span>
-                        <ChevronRight size={14} />
+                    {selectedAssetIds.length === filteredAssets.length ? 'Desmarcar Todos' : 'Selecionar Todos'}
+                  </button>
+                  {selectedAssetIds.length > 0 && (
+                    <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
+                      {selectedAssetIds.length} Selecionados
+                    </span>
+                  )}
+                </div>
+
+                {selectedAssetIds.length > 0 && (
+                  <div className="flex items-center gap-2 overflow-x-auto pb-1 custom-scrollbar scrollbar-hide">
+                    <div className="relative group">
+                      <button className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 border border-zinc-800 text-zinc-400 rounded-lg text-[10px] font-bold uppercase hover:text-white hover:border-zinc-700 transition-all">
+                        <ShieldCheck size={12} />
+                        Status
+                      </button>
+                      <div className="absolute right-0 top-full mt-1 w-32 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 p-1">
+                        {['Operacional', 'Alerta', 'Manutenção', 'Crítico'].map(s => (
+                          <button 
+                            key={s}
+                            onClick={() => bulkUpdateStatus(s as AssetStatus)}
+                            className="w-full text-left px-3 py-2 text-[10px] font-bold uppercase text-zinc-400 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-lg"
+                          >
+                            {s}
+                          </button>
+                        ))}
                       </div>
                     </div>
+
+                    <div className="relative group">
+                      <button className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 border border-zinc-800 text-zinc-400 rounded-lg text-[10px] font-bold uppercase hover:text-white hover:border-zinc-700 transition-all">
+                        <Clock size={12} />
+                        Freq.
+                      </button>
+                      <div className="absolute right-0 top-full mt-1 w-32 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 p-1">
+                        {[7, 15, 30, 45, 60, 90].map(d => (
+                          <button 
+                            key={d}
+                            onClick={() => bulkUpdateFrequency(d)}
+                            className="w-full text-left px-3 py-2 text-[10px] font-bold uppercase text-zinc-400 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-lg"
+                          >
+                            {d} dias
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <button 
+                      onClick={bulkDeleteAssets}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 border border-red-500/20 text-red-500 rounded-lg text-[10px] font-bold uppercase hover:bg-red-500/20 active:scale-95 transition-all"
+                    >
+                      <Trash2 size={12} />
+                      Excluir
+                    </button>
                   </div>
-                ))}
+                )}
+              </div>
+
+              <div className="space-y-3">
+                {filteredAssets.map(asset => {
+                  const isSelected = selectedAssetIds.includes(asset.id);
+                  return (
+                    <div 
+                      key={asset.id} 
+                      className={`dark-card cursor-pointer transition-all border group flex gap-4 ${
+                        isSelected ? 'border-emerald-500 bg-emerald-500/5' : 'hover:border-emerald-500/30'
+                      }`}
+                      onClick={() => setViewingAssetDetail(asset)}
+                    >
+                      <div 
+                        className="flex items-center justify-center"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedAssetIds(prev => 
+                            isSelected ? prev.filter(id => id !== asset.id) : [...prev, asset.id]
+                          );
+                        }}
+                      >
+                        <div className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-all ${
+                          isSelected ? 'bg-emerald-500 border-emerald-500 shadow-lg shadow-emerald-500/20' : 'border-zinc-800 group-hover:border-zinc-600'
+                        }`}>
+                          {isSelected && <Check size={12} className="text-black font-black" />}
+                        </div>
+                      </div>
+                      
+                      <div className="flex-1">
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <p className="text-[10px] text-emerald-500 font-bold uppercase tracking-tighter">{asset.type}</p>
+                            <h4 className="font-bold text-white leading-tight">{asset.name}</h4>
+                          </div>
+                          <StatusBadge status={asset.status} />
+                        </div>
+                        <div className="flex justify-between items-end">
+                          <p className="text-[10px] text-zinc-500 font-mono">SN: {asset.serialNumber}</p>
+                          <div className="flex items-center gap-2 text-zinc-500 text-[10px] font-bold uppercase transition-transform group-hover:translate-x-1">
+                            <span>Ver Detalhes</span>
+                            <ChevronRight size={14} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
                 {assets.length === 0 && (
                   <div className="text-center py-12 space-y-3">
                     <Package size={48} className="mx-auto text-zinc-800" />
@@ -1985,6 +2368,9 @@ export default function App() {
                             <div className="space-y-1">
                               <div className="flex items-center gap-2">
                                 <span className="text-xs font-bold text-white">{asset?.name || 'Ativo Removido'}</span>
+                                <span className={`px-1.5 py-0.5 rounded-full text-[8px] font-bold ${c.equipmentStatus === 'Operando' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
+                                  {c.equipmentStatus?.toUpperCase() || 'N/A'}
+                                </span>
                                 {hasNC && <span className="px-2 py-0.5 bg-red-500/10 text-red-500 text-[8px] font-bold rounded-full border border-red-500/20">NC DETECTADO</span>}
                               </div>
                               <p className="text-[10px] text-zinc-500">{new Date(c.date).toLocaleDateString('pt-BR')} às {new Date(c.date).toLocaleTimeString('pt-BR')} - {c.technician}</p>
@@ -2160,7 +2546,13 @@ export default function App() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-start gap-4">
                           <div className={`mt-1 p-2 rounded-xl border ${notification.severity === 'Crítico' ? 'bg-red-500/10 border-red-500/20 text-red-500' : 'bg-orange-500/10 border-orange-500/20 text-orange-500'}`}>
-                            {notification.type === 'deviation' ? <Activity size={18} /> : <Zap size={18} />}
+                            {notification.type === 'deviation' ? (
+                              <Activity size={18} />
+                            ) : notification.type === 'reminder' ? (
+                              <Clock size={18} className="text-emerald-500" />
+                            ) : (
+                              <Zap size={18} />
+                            )}
                           </div>
                           <div className="space-y-1">
                             <div className="flex items-center gap-2">
@@ -2639,6 +3031,24 @@ export default function App() {
                   <label className="text-[10px] font-bold text-zinc-500 uppercase">Localização</label>
                   <input name="location" placeholder="Ex: Setor de Britagem" className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" />
                 </div>
+
+                <div className="space-y-4 pt-4 border-t border-zinc-800">
+                  <div className="flex items-center gap-2">
+                    <Clock size={14} className="text-emerald-500" />
+                    <h4 className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Agendamento de Inspeção</h4>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Periodicidade (Dias)</label>
+                    <input 
+                      type="number" 
+                      name="inspectionFrequencyDays" 
+                      placeholder="Ex: 7 para semanal, 30 para mensal" 
+                      className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-emerald-500/50" 
+                    />
+                    <p className="text-[9px] text-zinc-600 italic">O sistema gerará alertas automáticos quando o ativo estiver com inspeção pendente.</p>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 gap-3">
                   <button 
                     type="submit" 
@@ -3228,9 +3638,14 @@ export default function App() {
               className="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-3xl p-6 space-y-6 max-h-[90vh] overflow-y-auto custom-scrollbar"
             >
               <div className="flex justify-between items-center">
-                <div>
+                <div className="space-y-1">
                   <h3 className="text-xl font-bold">Resumo da Inspeção</h3>
-                  <p className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest">{new Date(viewingChecklist.date).toLocaleString('pt-BR')}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">{new Date(viewingChecklist.date).toLocaleString('pt-BR')}</p>
+                    <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase ${viewingChecklist.equipmentStatus === 'Operando' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
+                      {viewingChecklist.equipmentStatus || 'N/A'}
+                    </span>
+                  </div>
                 </div>
                 <button onClick={() => setViewingChecklist(null)} className="text-zinc-500 hover:text-white"><X size={24} /></button>
               </div>
