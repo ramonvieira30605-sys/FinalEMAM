@@ -90,7 +90,9 @@ import {
   Edit3,
   Clock,
   Check,
-  Minus
+  Minus,
+  Save,
+  History
 } from 'lucide-react';
 import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react';
 import jsPDF from 'jspdf';
@@ -208,6 +210,7 @@ export default function App() {
   const [isGuideInModalOpen, setIsGuideInModalOpen] = useState(false);
   const [selectedType, setSelectedType] = useState<AssetType>('Motor');
   const [checklists, setChecklists] = useState<Checklist[]>([]);
+  const [drafts, setDrafts] = useState<Checklist[]>([]);
   const [isChecklistModalOpen, setIsChecklistModalOpen] = useState(false);
   const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBaseDoc[]>([]);
   const [selectedDoc, setSelectedDoc] = useState<KnowledgeBaseDoc | null>(null);
@@ -350,6 +353,9 @@ export default function App() {
           const parsed = JSON.parse(savedChecklists);
           setChecklists(migrateData(parsed));
         }
+
+        const savedDrafts = localStorage.getItem('emam_drafts');
+        if (savedDrafts) setDrafts(JSON.parse(savedDrafts));
         
         const savedKnowledge = localStorage.getItem('emam_knowledge');
         if (savedKnowledge) setKnowledgeBase(JSON.parse(savedKnowledge));
@@ -374,6 +380,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('emam_checklists', JSON.stringify(checklists));
   }, [checklists]);
+
+  useEffect(() => {
+    localStorage.setItem('emam_drafts', JSON.stringify(drafts));
+  }, [drafts]);
 
   useEffect(() => {
     localStorage.setItem('emam_knowledge', JSON.stringify(knowledgeBase));
@@ -968,6 +978,16 @@ export default function App() {
       return;
     }
 
+    if (status === 'NC' && !ncDescription.trim()) {
+      alert('Descrição da Não Conformidade é obrigatória.');
+      return;
+    }
+
+    if (currentItem.requiresValue && !measuredValue.trim()) {
+      alert('O valor de medição é obrigatório para este item.');
+      return;
+    }
+
     const updatedItems = [...checklistItems];
     updatedItems[currentChecklistStep] = {
       ...updatedItems[currentChecklistStep],
@@ -1097,7 +1117,62 @@ export default function App() {
     }
 
     setChecklists(prev => [newChecklist, ...prev]);
+    // Remove if it was a draft
+    setDrafts(prev => prev.filter(d => d.assetId !== selectedAsset.id));
     setIsChecklistStarted(false);
+  };
+
+  const saveChecklistDraft = () => {
+    if (!selectedAsset) return;
+
+    // We only update or add to drafts
+    const draft: Checklist = {
+      id: crypto.randomUUID(),
+      assetId: selectedAsset.id,
+      date: new Date().toISOString(),
+      technician: technicianName,
+      items: checklistItems,
+      observations: '',
+      equipmentStatus: inspectionEquipmentStatus,
+      isDraft: true
+    };
+
+    setDrafts(prev => {
+      const existing = prev.filter(d => d.assetId !== selectedAsset.id);
+      return [draft, ...existing];
+    });
+
+    setIsChecklistModalOpen(false);
+    setIsChecklistStarted(false);
+    alert('Rascunho salvo com sucesso! Você pode retomar mais tarde.');
+  };
+
+  const resumeChecklist = (draft: Checklist) => {
+    const asset = assets.find(a => a.id === draft.assetId);
+    if (!asset) return;
+
+    setSelectedAsset(asset);
+    setTechnicianName(draft.technician);
+    setChecklistItems(draft.items);
+    setInspectionEquipmentStatus(draft.equipmentStatus);
+    
+    // Find first non-null item to set current step
+    const firstNullIndex = draft.items.findIndex(item => item.status === null);
+    setCurrentChecklistStep(firstNullIndex === -1 ? draft.items.length - 1 : firstNullIndex);
+    
+    setIsChecklistStarted(true);
+    setIsChecklistModalOpen(true);
+    setChecklistSummary(null);
+    setTempPhoto(null);
+    setNcDescription('');
+    setMeasuredValue('');
+  };
+
+  const deleteDraft = (e: React.MouseEvent, draftId: string) => {
+    e.stopPropagation();
+    if (confirm('Deseja excluir este rascunho permanentemente?')) {
+      setDrafts(prev => prev.filter(d => d.id !== draftId));
+    }
   };
 
   const updateChecklistStatus = (checklistId: string, newStatus: 'Operando' | 'Parado') => {
@@ -1629,6 +1704,56 @@ export default function App() {
               exit={{ opacity: 0, y: -10 }}
               className="space-y-6"
             >
+              {/* Drafts Section */}
+              {drafts.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 mb-2 px-1">
+                    <div className="w-1.5 h-4 bg-amber-500 rounded-full" />
+                    <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Inspeções em Aberto</h3>
+                    <span className="ml-auto text-[9px] bg-amber-500/10 text-amber-500 px-2 py-0.5 rounded-full font-bold">RASCUNHOS</span>
+                  </div>
+                  <div className="flex gap-3 overflow-x-auto pb-2 px-1 snap-x scrollbar-hide">
+                    {drafts.map(draft => {
+                      const asset = assets.find(a => a.id === draft.assetId);
+                      if (!asset) return null;
+                      const progress = Math.round((draft.items.filter(i => i.status !== null).length / draft.items.length) * 100);
+                      
+                      return (
+                        <div 
+                          key={draft.id}
+                          onClick={() => resumeChecklist(draft)}
+                          className="min-w-[200px] bg-zinc-900/40 border border-amber-500/20 rounded-2xl p-4 snap-start hover:bg-zinc-900 transition-all cursor-pointer group active:scale-95 flex flex-col justify-between"
+                        >
+                          <div className="flex justify-between items-start mb-2">
+                            <div className="w-8 h-8 bg-amber-500/10 rounded-lg flex items-center justify-center">
+                              <Edit3 size={14} className="text-amber-500" />
+                            </div>
+                            <div className="text-right">
+                              <p className="text-[8px] text-zinc-500 font-bold uppercase">{progress}%</p>
+                              <div className="w-12 h-1 bg-zinc-800 rounded-full mt-1 overflow-hidden">
+                                <div className="h-full bg-amber-500" style={{ width: `${progress}%` }} />
+                              </div>
+                            </div>
+                          </div>
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <h4 className="font-bold text-white text-xs line-clamp-1">{asset.name}</h4>
+                              <button 
+                                onClick={(e) => deleteDraft(e, draft.id)}
+                                className="p-1 hover:bg-red-500/10 text-zinc-600 hover:text-red-500 rounded-md transition-colors"
+                              >
+                                <Trash2 size={10} />
+                              </button>
+                            </div>
+                            <p className="text-[9px] text-zinc-600">Retomar inspeção</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="dark-card emerald-glow">
                   <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest">Total de Ativos</p>
@@ -1695,11 +1820,29 @@ export default function App() {
           {/* Asset Details View */}
           {activeTab === 'inventory' && viewingAssetDetail && (
             <motion.div
-              key="asset-details"
+              key={viewingAssetDetail.id}
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
-              className="space-y-6 pb-8"
+              className="space-y-6 pb-8 touch-pan-y"
+              drag="x"
+              dragConstraints={{ left: 0, right: 0 }}
+              dragElastic={0.2}
+              onDragEnd={(e, info) => {
+                // Disable swipe while editing to avoid accidental loss of changes
+                if (isEditingAsset) return;
+                
+                const threshold = 100;
+                const currentIndex = filteredAssets.findIndex(a => a.id === viewingAssetDetail.id);
+                
+                if (info.offset.x < -threshold && currentIndex < filteredAssets.length - 1) {
+                  // Swipe Left -> Next Asset
+                  setViewingAssetDetail(filteredAssets[currentIndex + 1]);
+                } else if (info.offset.x > threshold && currentIndex > 0) {
+                  // Swipe Right -> Previous Asset
+                  setViewingAssetDetail(filteredAssets[currentIndex - 1]);
+                }
+              }}
             >
               {/* Header with Navigation */}
               <div className="flex items-center justify-between">
@@ -1748,9 +1891,9 @@ export default function App() {
 
                   <div className="flex items-center gap-2">
                     {(() => {
-                      const currentIndex = assets.findIndex(a => a.id === viewingAssetDetail.id);
-                      const prevAsset = currentIndex > 0 ? assets[currentIndex - 1] : null;
-                      const nextAsset = currentIndex < assets.length - 1 ? assets[currentIndex + 1] : null;
+                      const currentIndex = filteredAssets.findIndex(a => a.id === viewingAssetDetail.id);
+                      const prevAsset = currentIndex > 0 ? filteredAssets[currentIndex - 1] : null;
+                      const nextAsset = currentIndex < filteredAssets.length - 1 ? filteredAssets[currentIndex + 1] : null;
 
                       return (
                         <>
@@ -1762,7 +1905,7 @@ export default function App() {
                             <ChevronLeft size={16} />
                           </button>
                           <span className="text-[10px] font-black w-10 text-center text-zinc-500">
-                            {currentIndex + 1} / {assets.length}
+                            {currentIndex + 1} / {filteredAssets.length}
                           </span>
                           <button 
                             disabled={!nextAsset || isEditingAsset}
@@ -3187,7 +3330,7 @@ export default function App() {
                 </div>
               ) : (
                 <div className="space-y-6">
-                  {/* Progress Bar & Back Button */}
+                  {/* Progress Bar & Buttons */}
                   <div className="flex items-center gap-3">
                     {currentChecklistStep > 0 && (
                       <button 
@@ -3197,24 +3340,26 @@ export default function App() {
                           setNcDescription(checklistItems[currentChecklistStep - 1].ncDescription || '');
                           setMeasuredValue(checklistItems[currentChecklistStep - 1].measuredValue || '');
                         }}
-                        className="p-2 bg-zinc-800 text-zinc-400 rounded-xl hover:text-white transition-colors"
+                        className="p-2 bg-zinc-800 text-zinc-400 rounded-xl hover:text-white transition-colors h-10 w-10 flex items-center justify-center"
                       >
                         <ChevronLeft size={20} />
                       </button>
                     )}
-                    <div className="flex-1 flex gap-1 h-1">
+                    <div className="flex-1 flex gap-1 h-1.5">
                       {checklistItems.map((_, idx) => (
-                        <motion.div 
+                        <div 
                           key={idx} 
-                          initial={false}
-                          animate={{ 
-                            backgroundColor: idx <= currentChecklistStep ? '#10b981' : '#27272a',
-                            scaleY: idx === currentChecklistStep ? [1, 1.5, 1] : 1
-                          }}
-                          className="flex-1 rounded-full h-full" 
+                          className={`flex-1 rounded-full h-full transition-all duration-300 ${idx < currentChecklistStep ? 'bg-emerald-500' : idx === currentChecklistStep ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-zinc-800'}`}
                         />
                       ))}
                     </div>
+                    <button 
+                      onClick={saveChecklistDraft}
+                      className="p-2 bg-amber-500/10 border border-amber-500/20 text-amber-500 rounded-xl hover:bg-amber-500/20 transition-all active:scale-95 h-10 w-10 flex items-center justify-center"
+                      title="Salvar Rascunho"
+                    >
+                      <Save size={18} />
+                    </button>
                   </div>
 
                   <AnimatePresence mode="wait">
@@ -3227,9 +3372,20 @@ export default function App() {
                       className="space-y-4"
                     >
                       <div className="space-y-1">
-                        <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Item {checklistItems[currentChecklistStep].id}</span>
-                        <h4 className="text-lg font-bold leading-tight">{checklistItems[currentChecklistStep].label}</h4>
-                        <p className="text-xs text-zinc-400">{checklistItems[currentChecklistStep].description}</p>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-black text-emerald-500/50 uppercase tracking-[0.2em]">Item {checklistItems[currentChecklistStep].id} / {checklistItems.length}</span>
+                          <div className="flex gap-1.5">
+                            {(checklistItems[currentChecklistStep].label.toUpperCase().includes('FOTO') || 
+                              checklistItems[currentChecklistStep].description.includes('📸')) && (
+                              <span className="p-1 bg-sky-500/10 text-sky-500 rounded-md" title="Foto Obrigatória"><Camera size={12} /></span>
+                            )}
+                            {checklistItems[currentChecklistStep].requiresValue && (
+                              <span className="p-1 bg-amber-500/10 text-amber-500 rounded-md" title="Medição Obrigatória"><Zap size={12} /></span>
+                            )}
+                          </div>
+                        </div>
+                        <h4 className="text-xl font-bold leading-tight text-white tracking-tight">{checklistItems[currentChecklistStep].label}</h4>
+                        <p className="text-xs text-zinc-500 leading-relaxed">{checklistItems[currentChecklistStep].description}</p>
                       </div>
 
                       {/* Measured Value Input */}
@@ -3314,15 +3470,17 @@ export default function App() {
                             initial={{ height: 0, opacity: 0 }}
                             animate={{ height: 'auto', opacity: 1 }}
                             exit={{ height: 0, opacity: 0 }}
-                            className="space-y-2 overflow-hidden"
+                            className="space-y-2 overflow-hidden bg-red-500/5 border border-red-500/20 p-4 rounded-2xl"
                           >
-                            <label className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">Descrição do Problema (Obrigatório)</label>
+                            <div className="flex items-center justify-between">
+                              <label className="text-[10px] font-black text-red-500 uppercase tracking-widest">Descreva a Não Conformidade</label>
+                              <span className="text-[8px] bg-red-500 text-white px-1.5 py-0.5 rounded font-black uppercase">Obrigatório em NC</span>
+                            </div>
                             <textarea 
                               value={ncDescription}
                               onChange={(e) => setNcDescription(e.target.value)}
-                              placeholder="Descreva brevemente a anomalia encontrada..."
-                              className="w-full bg-black border border-zinc-800 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-amber-500/50 resize-none"
-                              rows={2}
+                              placeholder="Qual o defeito? O que precisa ser feito? Ex: Cabo de aterramento rompido, requer substituição imediata."
+                              className="w-full bg-black border border-zinc-800 rounded-xl py-3 px-4 text-xs font-medium text-white focus:outline-none focus:border-red-500/50 resize-none min-h-[80px]"
                             />
                           </motion.div>
                         )}

@@ -52,6 +52,7 @@ export interface Checklist {
   items: ChecklistItem[];
   observations: string;
   equipmentStatus: 'Operando' | 'Parado';
+  isDraft?: boolean;
 }
 
 export interface KnowledgeBaseDoc {
