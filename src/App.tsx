@@ -99,6 +99,7 @@ import {
   Info
 } from 'lucide-react';
 import { analyzeAssetHistory, AIAnalysisResult } from './services/geminiService';
+import { analyzeAssetLocally } from './services/localAnalysisService';
 import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -1207,13 +1208,20 @@ export default function App() {
     if (!viewingAssetDetail) return;
     setIsAiLoading(true);
     setAiAnalysis(null);
+    
+    // 1. Perform Local Analysis first (Offline)
+    const assetHistory = checklists.filter(c => c.assetId === viewingAssetDetail.id);
+    const localResult = analyzeAssetLocally(viewingAssetDetail, assetHistory);
+    setAiAnalysis(localResult);
+
+    // 2. Attempt to enhance with AI if online
     try {
-      const assetHistory = checklists.filter(c => c.assetId === viewingAssetDetail.id);
-      const result = await analyzeAssetHistory(viewingAssetDetail, assetHistory);
-      setAiAnalysis(result);
+      const aiResult = await analyzeAssetHistory(viewingAssetDetail, assetHistory);
+      // Merge AI result (AI takes precedence for summary/strategies if successful)
+      setAiAnalysis(aiResult);
     } catch (error) {
-      console.error("Erro na análise IA:", error);
-      alert("Não foi possível realizar a análise no momento.");
+      console.warn("IA indisponível, utilizando análise offline local.");
+      // No alert here, as local analysis is already displayed
     } finally {
       setIsAiLoading(false);
     }
@@ -1911,13 +1919,13 @@ export default function App() {
                 <div className="flex items-center gap-4">
                   {!isEditingAsset && (
                     <div className="flex gap-2">
-                       <button 
+                      <button 
                         onClick={handleAiAnalysis}
                         disabled={isAiLoading}
                         className="flex items-center gap-2 text-amber-500 hover:text-amber-400 transition-colors active:scale-95 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20"
                       >
                         {isAiLoading ? <Loader2 size={14} className="animate-spin" /> : <BrainCircuit size={14} />}
-                        <span className="text-[10px] font-black uppercase tracking-widest">{isAiLoading ? 'Analisando...' : 'Modo Aprendizado'}</span>
+                        <span className="text-[10px] font-black uppercase tracking-widest">{isAiLoading ? 'Analisando...' : 'Análise Preditiva'}</span>
                       </button>
                       <button 
                         onClick={() => setIsEditingAsset(true)}
@@ -1997,14 +2005,17 @@ export default function App() {
                           <div className="p-1.5 bg-amber-500/20 rounded-lg">
                             <Sparkles size={16} className="text-amber-500" />
                           </div>
-                          <h3 className="text-xs font-black uppercase text-amber-500 tracking-widest">Relatório de Inteligência Preditiva</h3>
+                          <h3 className="text-xs font-black uppercase text-amber-500 tracking-widest">Relatório Preditivo {isAiLoading ? '(Processando...)' : ''}</h3>
                         </div>
-                        <button 
-                          onClick={() => setAiAnalysis(null)}
-                          className="p-1 text-zinc-600 hover:text-zinc-400"
-                        >
-                          <X size={14} />
-                        </button>
+                        <div className="flex items-center gap-2">
+                          {!isAiLoading && <span className="text-[8px] font-black bg-emerald-500/10 text-emerald-500 px-1.5 py-0.5 rounded border border-emerald-500/20 uppercase">Offline Ready</span>}
+                          <button 
+                            onClick={() => setAiAnalysis(null)}
+                            className="p-1 text-zinc-600 hover:text-zinc-400"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
                       </div>
 
                       <div className="space-y-4">
