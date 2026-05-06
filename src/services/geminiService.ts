@@ -1,7 +1,18 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { Asset, Checklist } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+let aiClient: GoogleGenerativeAI | null = null;
+
+function getAiClient() {
+  if (!aiClient) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error("Chave de API Gemini não configurada.");
+    }
+    aiClient = new GoogleGenerativeAI(apiKey);
+  }
+  return aiClient;
+}
 
 export interface AIAnalysisResult {
   proactiveStrategies: string[];
@@ -10,6 +21,7 @@ export interface AIAnalysisResult {
 }
 
 export async function analyzeAssetHistory(asset: Asset, history: Checklist[]): Promise<AIAnalysisResult> {
+  const client = getAiClient();
   const model = "gemini-3-flash-preview";
   
   const historyPrompt = history.map(h => {
@@ -34,27 +46,33 @@ Histórico de Inspeções:
 ${historyPrompt || 'Nenhum histórico disponível.'}`;
 
   try {
-    const response = await ai.models.generateContent({
+    const generativeModel = client.getGenerativeModel({
       model,
-      contents: prompt,
-      config: {
-        systemInstruction,
+      systemInstruction: {
+        role: "system",
+        parts: [{ text: systemInstruction }]
+      }
+    });
+
+    const response = await generativeModel.generateContent({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: {
         responseMimeType: "application/json",
         responseSchema: {
-          type: Type.OBJECT,
+          type: SchemaType.OBJECT,
           properties: {
             proactiveStrategies: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
+              type: SchemaType.ARRAY,
+              items: { type: SchemaType.STRING },
               description: "Lista de estratégias de manutenção proativa recomendadas."
             },
             potentialFailurePoints: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
+              type: SchemaType.ARRAY,
+              items: { type: SchemaType.STRING },
               description: "Lista de possíveis pontos de falha identificados."
             },
             summary: {
-              type: Type.STRING,
+              type: SchemaType.STRING,
               description: "Resumo executivo da saúde e tendências do ativo."
             }
           },
@@ -63,7 +81,7 @@ ${historyPrompt || 'Nenhum histórico disponível.'}`;
       }
     });
 
-    const result = JSON.parse(response.text || "{}");
+    const result = JSON.parse(response.response.text() || "{}");
     return result as AIAnalysisResult;
   } catch (error) {
     console.error("Erro na análise IA:", error);

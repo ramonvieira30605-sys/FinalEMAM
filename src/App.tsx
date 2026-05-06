@@ -5,59 +5,8 @@
 
 import React, { useState, useEffect, useMemo, Component, ErrorInfo, ReactNode } from 'react';
 
-// Error Boundary Component
-export class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
-  constructor(props: { children: React.ReactNode }) {
-    super(props);
-    this.state = { hasError: false };
-  }
+// Error Boundary Component (Declared below after icon imports)
 
-  static getDerivedStateFromError(_: Error) {
-    return { hasError: true };
-  }
-
-  override componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error("ErrorBoundary caught an error", error, errorInfo);
-  }
-
-  override render() {
-    if (this.state.hasError) {
-      return (
-        <div className="flex flex-col items-center justify-center h-screen bg-black text-white p-6 text-center">
-          <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center mb-6">
-            <AlertTriangle size={40} className="text-red-500" />
-          </div>
-          <h2 className="text-2xl font-black mb-2 uppercase tracking-tighter">Ops! Algo deu errado.</h2>
-          <p className="text-zinc-500 text-sm max-w-xs mb-8">
-            Ocorreu um erro inesperado ao processar as informações do ativo. 
-            Tente recarregar a página ou limpe os dados locais.
-          </p>
-          <div className="flex flex-col w-full gap-3">
-            <button 
-              onClick={() => window.location.reload()}
-              className="w-full py-4 bg-emerald-500 text-black font-bold rounded-2xl active:scale-95 transition-all"
-            >
-              RECARREGAR APLICATIVO
-            </button>
-            <button 
-              onClick={() => {
-                if (confirm('Atenção: Isso excluirá todos os seus ativos e checklists salvos localmente. Deseja continuar?')) {
-                  localStorage.clear();
-                  window.location.reload();
-                }
-              }}
-              className="w-full py-4 bg-zinc-900 text-zinc-500 font-bold rounded-2xl active:scale-95 transition-all border border-zinc-800"
-            >
-              LIMPAR TODOS OS DADOS
-            </button>
-          </div>
-        </div>
-      );
-    }
-
-    return this.props.children;
-  }
-}
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   LayoutDashboard, 
@@ -213,6 +162,53 @@ const StatusBadge = ({ status }: { status: AssetStatus }) => {
     </motion.span>
   );
 };
+
+// --- Error Boundary ---
+export class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: Error | null }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("ErrorBoundary caught an error", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-black flex items-center justify-center p-6 text-center">
+          <div className="space-y-4 max-w-md">
+            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-full w-16 h-16 mx-auto flex items-center justify-center">
+              <AlertTriangle className="text-red-500" size={32} />
+            </div>
+            <h1 className="text-xl font-black text-white uppercase tracking-tight">Ocorreu um erro crítico</h1>
+            <p className="text-zinc-500 text-xs leading-relaxed">
+              Infelizmente, o aplicativo encontrou uma falha inesperada. Tente recarregar a página ou limpe o cache do navegador.
+            </p>
+            <div className="p-4 bg-zinc-900 rounded-2xl border border-zinc-800 text-left overflow-auto max-h-40">
+              <code className="text-[10px] text-red-400 font-mono break-all">
+                {this.state.error?.message}
+              </code>
+            </div>
+            <button 
+              onClick={() => window.location.reload()}
+              className="w-full py-3 bg-emerald-500 text-black font-black uppercase tracking-widest rounded-xl text-xs active:scale-95 transition-all"
+            >
+              Recarregar Aplicativo
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'inventory' | 'guide' | 'knowledge' | 'reports' | 'alerts'>('dashboard');
