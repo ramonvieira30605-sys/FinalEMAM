@@ -92,8 +92,13 @@ import {
   Check,
   Minus,
   Save,
-  History
+  History,
+  BrainCircuit,
+  Sparkles,
+  Loader2,
+  Info
 } from 'lucide-react';
+import { analyzeAssetHistory, AIAnalysisResult } from './services/geminiService';
 import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -101,6 +106,17 @@ import * as pdfjsLib from 'pdfjs-dist';
 import { Asset, AppNotification, AssetStatus, AssetType, Checklist, ChecklistItem, KnowledgeBaseDoc } from './types';
 
 // --- Constants ---
+
+const generateId = () => {
+  try {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+  } catch (e) {
+    // Fallback if crypto is restricted
+  }
+  return Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+};
 
 const ALL_CHECKLIST_ITEMS_TEMPLATE = [
   // 1. QGBT (QUADRO GERAL)
@@ -200,6 +216,8 @@ const StatusBadge = ({ status }: { status: AssetStatus }) => {
 export default function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'inventory' | 'guide' | 'knowledge' | 'reports' | 'alerts'>('dashboard');
   const [viewingAssetDetail, setViewingAssetDetail] = useState<Asset | null>(null);
+  const [aiAnalysis, setAiAnalysis] = useState<AIAnalysisResult | null>(null);
+  const [isAiLoading, setIsAiLoading] = useState(false);
   const [isEditingAsset, setIsEditingAsset] = useState(false);
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
   const [openBulkMenu, setOpenBulkMenu] = useState<'status' | 'freq' | null>(null);
@@ -372,22 +390,27 @@ export default function App() {
     loadInitialData();
   }, []);
 
-  // Auto-sync to LocalStorage only
+  // Combined Auto-sync to LocalStorage with Error Handling
   useEffect(() => {
-    localStorage.setItem('emam_assets', JSON.stringify(assets));
-  }, [assets]);
+    if (isLoadingData) return;
+    
+    const saveData = () => {
+      try {
+        localStorage.setItem('emam_assets', JSON.stringify(assets));
+        localStorage.setItem('emam_checklists', JSON.stringify(checklists));
+        localStorage.setItem('emam_drafts', JSON.stringify(drafts));
+        localStorage.setItem('emam_knowledge', JSON.stringify(knowledgeBase));
+        localStorage.setItem('emam_notifications', JSON.stringify(notifications));
+      } catch (e) {
+        console.error('Quota exceeded or storage error:', e);
+        // If it fails, it usually means localStorage is full (likely by photos)
+        // We don't want to crash the app, just log it.
+        // Future improvement: implement a cleanup strategy for old photos.
+      }
+    };
 
-  useEffect(() => {
-    localStorage.setItem('emam_checklists', JSON.stringify(checklists));
-  }, [checklists]);
-
-  useEffect(() => {
-    localStorage.setItem('emam_drafts', JSON.stringify(drafts));
-  }, [drafts]);
-
-  useEffect(() => {
-    localStorage.setItem('emam_knowledge', JSON.stringify(knowledgeBase));
-  }, [knowledgeBase]);
+    saveData();
+  }, [assets, checklists, drafts, knowledgeBase, notifications, isLoadingData]);
 
   const saveAssetEdit = () => {
     if (!viewingAssetDetail) return;
@@ -429,11 +452,17 @@ export default function App() {
 
   const stats = useMemo(() => {
     const overdueCount = assets.filter(asset => {
-      if (!asset.inspectionFrequencyDays) return false;
-      const lastDateStr = asset.lastChecklistDate || asset.createdAt;
-      const nextDate = new Date(lastDateStr);
-      nextDate.setDate(nextDate.getDate() + asset.inspectionFrequencyDays);
-      return new Date() >= nextDate;
+      if (!asset || !asset.inspectionFrequencyDays) return false;
+      try {
+        const lastDateStr = asset.lastChecklistDate || asset.createdAt;
+        if (!lastDateStr) return false;
+        const nextDate = new Date(lastDateStr);
+        if (isNaN(nextDate.getTime())) return false;
+        nextDate.setDate(nextDate.getDate() + asset.inspectionFrequencyDays);
+        return new Date() >= nextDate;
+      } catch (e) {
+        return false;
+      }
     }).length;
 
     return {
@@ -729,7 +758,7 @@ export default function App() {
           readFileAsDataURL(file)
         ]);
         const newDoc: KnowledgeBaseDoc = {
-          id: crypto.randomUUID(),
+          id: generateId(),
           name: file.name,
           content: content,
           fileData: fileData,
@@ -826,7 +855,7 @@ export default function App() {
     const frequency = formData.get('inspectionFrequencyDays') ? parseInt(formData.get('inspectionFrequencyDays') as string) : undefined;
     
     const newAsset: Asset = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       name: formData.get('name') as string,
       type: formData.get('type') as AssetType,
       model: formData.get('model') as string,
@@ -873,7 +902,7 @@ export default function App() {
   const addNotification = (notif: Omit<AppNotification, 'id' | 'date' | 'read'>) => {
     const newNotif: AppNotification = {
       ...notif,
-      id: crypto.randomUUID(),
+      id: generateId(),
       date: new Date().toISOString(),
       read: false
     };
@@ -1011,115 +1040,121 @@ export default function App() {
   const finishChecklist = (finalItems: ChecklistItem[]) => {
     if (!selectedAsset) return;
     
-    const newChecklist: Checklist = {
-      id: crypto.randomUUID(),
-      assetId: selectedAsset.id,
-      date: new Date().toISOString(),
-      technician: technicianName,
-      items: finalItems,
-      observations: '',
-      equipmentStatus: inspectionEquipmentStatus
-    };
+    try {
+      const newChecklist: Checklist = {
+        id: generateId(),
+        assetId: selectedAsset.id,
+        date: new Date().toISOString(),
+        technician: technicianName,
+        items: finalItems,
+        observations: '',
+        equipmentStatus: inspectionEquipmentStatus
+      };
 
-    // Generate summary for copying
-    let summary = `--- 📋 RESUMO DE INSPEÇÃO DIÁRIA ---\n`;
-    summary += `DATA: ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}\n`;
-    summary += `TÉCNICO: ${technicianName}\n`;
-    summary += `EQUIPAMENTO: ${selectedAsset.name} (${selectedAsset.type})\n`;
-    summary += `ESTADO: ${inspectionEquipmentStatus.toUpperCase()}\n\n`;
+      // Generate summary for copying
+      let summary = `--- 📋 RESUMO DE INSPEÇÃO DIÁRIA ---\n`;
+      summary += `DATA: ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}\n`;
+      summary += `TÉCNICO: ${technicianName}\n`;
+      summary += `EQUIPAMENTO: ${selectedAsset.name} (${selectedAsset.type})\n`;
+      summary += `ESTADO: ${inspectionEquipmentStatus.toUpperCase()}\n\n`;
 
-    finalItems.forEach(item => {
-      const statusText = item.status === 'C' ? 'SIM' : item.status === 'NC' ? 'NÃO [CRÍTICO]' : 'N/A';
-      summary += `[${statusText}] ${item.label}\n`;
-      if (item.measuredValue) {
-        summary += `   VALOR: ${item.measuredValue} (REF: ${item.referenceValue || '-'})\n`;
-      }
-      if (item.ncDescription) {
-        summary += `   OBS: ${item.ncDescription}\n`;
-      }
-    });
-    summary += `\n--- FIM DO RELATÓRIO ---`;
+      finalItems.forEach(item => {
+        const statusText = item.status === 'C' ? 'SIM' : item.status === 'NC' ? 'NÃO [CRÍTICO]' : 'N/A';
+        summary += `[${statusText}] ${item.label}\n`;
+        if (item.measuredValue) {
+          summary += `   VALOR: ${item.measuredValue} (REF: ${item.referenceValue || '-'})\n`;
+        }
+        if (item.ncDescription) {
+          summary += `   OBS: ${item.ncDescription}\n`;
+        }
+      });
+      summary += `\n--- FIM DO RELATÓRIO ---`;
 
-    setChecklistSummary(summary);
-    // Notifications for deviations or status impact
-    let newStatus: AssetStatus = 'Operacional';
-    let hasNC = false;
-    let hasDeviation = false;
-
-    finalItems.forEach(item => {
-      if (item.status === 'NC') {
-        hasNC = true;
-        addNotification({
-          type: 'deviation',
-          assetId: selectedAsset.id,
-          assetName: selectedAsset.name,
-          severity: 'Crítico',
-          message: `Não conformidade detectada: ${item.label}. ${item.ncDescription || ''}`
-        });
-      }
+      setChecklistSummary(summary);
       
-      // Simple value range check (Basic implementation)
-      if (item.measuredValue && item.referenceValue) {
-        // Handle "> X" or "< X"
-        const cleanMeasured = parseFloat(item.measuredValue.replace(/[^0-9.]/g, ''));
-        const refValue = item.referenceValue;
+      // Notifications for deviations or status impact
+      let newStatus: AssetStatus = 'Operacional';
+      let hasNC = false;
+      let hasDeviation = false;
+
+      finalItems.forEach(item => {
+        if (item.status === 'NC') {
+          hasNC = true;
+          addNotification({
+            type: 'deviation',
+            assetId: selectedAsset.id,
+            assetName: selectedAsset.name,
+            severity: 'Crítico',
+            message: `Não conformidade detectada: ${item.label}. ${item.ncDescription || ''}`
+          });
+        }
         
-        if (!isNaN(cleanMeasured)) {
-          if (refValue.startsWith('>')) {
-            const threshold = parseFloat(refValue.replace('>', '').trim());
-            if (cleanMeasured <= threshold) {
-              hasDeviation = true;
-              addNotification({
-                type: 'deviation',
-                assetId: selectedAsset.id,
-                assetName: selectedAsset.name,
-                severity: 'Alerta',
-                message: `Parâmetro insuficiente: ${item.label} (${item.measuredValue}). Ref: ${refValue}`
-              });
+        // Simple value range check
+        if (item.measuredValue && item.referenceValue) {
+          const cleanMeasured = parseFloat(String(item.measuredValue).replace(/[^0-9.]/g, ''));
+          const refValue = String(item.referenceValue);
+          
+          if (!isNaN(cleanMeasured)) {
+            if (refValue.startsWith('>')) {
+              const threshold = parseFloat(refValue.replace('>', '').trim());
+              if (!isNaN(threshold) && cleanMeasured <= threshold) {
+                hasDeviation = true;
+                addNotification({
+                  type: 'deviation',
+                  assetId: selectedAsset.id,
+                  assetName: selectedAsset.name,
+                  severity: 'Alerta',
+                  message: `Parâmetro insuficiente: ${item.label} (${item.measuredValue}). Ref: ${refValue}`
+                });
+              }
+            } else if (refValue.startsWith('<')) {
+               const threshold = parseFloat(refValue.replace('<', '').trim());
+               if (!isNaN(threshold) && cleanMeasured >= threshold) {
+                 hasDeviation = true;
+                 addNotification({
+                   type: 'deviation',
+                   assetId: selectedAsset.id,
+                   assetName: selectedAsset.name,
+                   severity: 'Alerta',
+                   message: `Parâmetro excessivo: ${item.label} (${item.measuredValue}). Ref: ${refValue}`
+                 });
+               }
             }
-          } else if (refValue.startsWith('<')) {
-             const threshold = parseFloat(refValue.replace('<', '').trim());
-             if (cleanMeasured >= threshold) {
-               hasDeviation = true;
-               addNotification({
-                 type: 'deviation',
-                 assetId: selectedAsset.id,
-                 assetName: selectedAsset.name,
-                 severity: 'Alerta',
-                 message: `Parâmetro excessivo: ${item.label} (${item.measuredValue}). Ref: ${refValue}`
-               });
-             }
           }
         }
-      }
-    });
-
-    if (hasNC) newStatus = 'Crítico';
-    else if (hasDeviation) newStatus = 'Alerta';
-
-    // Update asset status and last inspection date
-    setAssets(prev => prev.map(a => a.id === selectedAsset.id ? { 
-      ...a, 
-      status: newStatus !== selectedAsset.status ? newStatus : a.status, 
-      lastUpdated: new Date().toISOString(),
-      lastChecklistDate: new Date().toISOString()
-    } : a));
-
-    // Notify status change if it becomes critical/alert
-    if (newStatus !== selectedAsset.status && (newStatus === 'Alerta' || newStatus === 'Crítico')) {
-      addNotification({
-        type: 'status_change',
-        assetId: selectedAsset.id,
-        assetName: selectedAsset.name,
-        severity: newStatus as any,
-        message: `Status do ativo alterado para ${newStatus.toUpperCase()} após inspeção.`
       });
-    }
 
-    setChecklists(prev => [newChecklist, ...prev]);
-    // Remove if it was a draft
-    setDrafts(prev => prev.filter(d => d.assetId !== selectedAsset.id));
-    setIsChecklistStarted(false);
+      if (hasNC) newStatus = 'Crítico';
+      else if (hasDeviation) newStatus = 'Alerta';
+
+      // Update asset status and last inspection date
+      setAssets(prev => prev.map(a => a.id === selectedAsset.id ? { 
+        ...a, 
+        status: newStatus !== a.status ? newStatus : a.status, 
+        lastUpdated: new Date().toISOString(),
+        lastChecklistDate: new Date().toISOString()
+      } : a));
+
+      // Notify status change if it becomes critical/alert
+      if (newStatus !== selectedAsset.status && (newStatus === 'Alerta' || newStatus === 'Crítico')) {
+        addNotification({
+          type: 'status_change',
+          assetId: selectedAsset.id,
+          assetName: selectedAsset.name,
+          severity: newStatus as any,
+          message: `Status do ativo alterado para ${newStatus.toUpperCase()} após inspeção.`
+        });
+      }
+
+      setChecklists(prev => [newChecklist, ...prev]);
+      // Remove if it was a draft
+      setDrafts(prev => prev.filter(d => d.assetId !== selectedAsset.id));
+      setIsChecklistStarted(false);
+    } catch (error) {
+      console.error("Error finishing checklist:", error);
+      alert("Ocorreu um erro ao finalizar o checklist. Suas respostas foram salvas como rascunho por segurança.");
+      saveChecklistDraft();
+    }
   };
 
   const saveChecklistDraft = () => {
@@ -1127,7 +1162,7 @@ export default function App() {
 
     // We only update or add to drafts
     const draft: Checklist = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       assetId: selectedAsset.id,
       date: new Date().toISOString(),
       technician: technicianName,
@@ -1166,6 +1201,22 @@ export default function App() {
     setTempPhoto(null);
     setNcDescription('');
     setMeasuredValue('');
+  };
+
+  const handleAiAnalysis = async () => {
+    if (!viewingAssetDetail) return;
+    setIsAiLoading(true);
+    setAiAnalysis(null);
+    try {
+      const assetHistory = checklists.filter(c => c.assetId === viewingAssetDetail.id);
+      const result = await analyzeAssetHistory(viewingAssetDetail, assetHistory);
+      setAiAnalysis(result);
+    } catch (error) {
+      console.error("Erro na análise IA:", error);
+      alert("Não foi possível realizar a análise no momento.");
+    } finally {
+      setIsAiLoading(false);
+    }
   };
 
   const deleteDraft = (e: React.MouseEvent, draftId: string) => {
@@ -1859,13 +1910,23 @@ export default function App() {
 
                 <div className="flex items-center gap-4">
                   {!isEditingAsset && (
-                    <button 
-                      onClick={() => setIsEditingAsset(true)}
-                      className="flex items-center gap-2 text-emerald-500 hover:text-emerald-400 transition-colors active:scale-95 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20"
-                    >
-                      <Edit3 size={14} />
-                      <span className="text-[10px] font-black uppercase tracking-widest">Editar Ativo</span>
-                    </button>
+                    <div className="flex gap-2">
+                       <button 
+                        onClick={handleAiAnalysis}
+                        disabled={isAiLoading}
+                        className="flex items-center gap-2 text-amber-500 hover:text-amber-400 transition-colors active:scale-95 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20"
+                      >
+                        {isAiLoading ? <Loader2 size={14} className="animate-spin" /> : <BrainCircuit size={14} />}
+                        <span className="text-[10px] font-black uppercase tracking-widest">{isAiLoading ? 'Analisando...' : 'Modo Aprendizado'}</span>
+                      </button>
+                      <button 
+                        onClick={() => setIsEditingAsset(true)}
+                        className="flex items-center gap-2 text-emerald-500 hover:text-emerald-400 transition-colors active:scale-95 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20"
+                      >
+                        <Edit3 size={14} />
+                        <span className="text-[10px] font-black uppercase tracking-widest">Editar Ativo</span>
+                      </button>
+                    </div>
                   )}
 
                   {isEditingAsset && (
@@ -1920,6 +1981,79 @@ export default function App() {
                   </div>
                 </div>
               </div>
+
+              {/* AI Analysis Result */}
+              <AnimatePresence>
+                {aiAnalysis && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="dark-card border-amber-500/30 bg-amber-500/5 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="p-1.5 bg-amber-500/20 rounded-lg">
+                            <Sparkles size={16} className="text-amber-500" />
+                          </div>
+                          <h3 className="text-xs font-black uppercase text-amber-500 tracking-widest">Relatório de Inteligência Preditiva</h3>
+                        </div>
+                        <button 
+                          onClick={() => setAiAnalysis(null)}
+                          className="p-1 text-zinc-600 hover:text-zinc-400"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div>
+                          <p className="text-[9px] font-black text-amber-500/50 uppercase tracking-widest mb-1">Resumo de Saúde</p>
+                          <p className="text-xs text-zinc-300 leading-relaxed italic">{aiAnalysis.summary}</p>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-1.5">
+                              <ShieldCheck size={12} className="text-emerald-400" />
+                              <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest">Estratégias Recomendadas</p>
+                            </div>
+                            <ul className="space-y-1.5">
+                              {aiAnalysis.proactiveStrategies.map((s, i) => (
+                                <li key={i} className="flex gap-2 text-[10px] text-zinc-400">
+                                  <div className="mt-1 w-1 h-1 bg-emerald-500 rounded-full flex-shrink-0" />
+                                  {s}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-1.5">
+                              <AlertTriangle size={12} className="text-red-400" />
+                              <p className="text-[9px] font-black text-red-400 uppercase tracking-widest">Pontos de Atenção Próxima</p>
+                            </div>
+                            <ul className="space-y-1.5">
+                              {aiAnalysis.potentialFailurePoints.map((p, i) => (
+                                <li key={i} className="flex gap-2 text-[10px] text-zinc-400">
+                                  <div className="mt-1 w-1 h-1 bg-red-500 rounded-full flex-shrink-0" />
+                                  {p}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 flex items-center gap-2 border-t border-amber-500/10">
+                        <Info size={10} className="text-zinc-600" />
+                        <p className="text-[8px] text-zinc-600 italic">Análise gerada via IA baseada no histórico de inspeções deste ativo.</p>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* Asset Header Card */}
               <div className="dark-card border-emerald-500/30 bg-emerald-500/5 relative overflow-hidden">
